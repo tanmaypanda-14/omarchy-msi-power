@@ -94,12 +94,34 @@ the rule and group:
 
 The driver must be loaded (built in, DKMS `msi-ec`, or whatever the distro
 ships); no `mcontrolcenter` package is needed anymore. Then add and enable
-the plugin:
+the plugin — the grant is applied automatically during `plugin add`:
 
 ```bash
 omarchy plugin add https://github.com/<you>/omarchy-msi-power.git --enable
 omarchy bar move omarchy.power --section right   # optional, position in right section
 ```
+
+The plugin ships a lifecycle (automation) layer so the omarchy plugin manager
+runs the root-side setup for you:
+
+```bash
+omarchy plugin add      tanmay.msi-power   # runs setup/install.sh   → grant via sudo
+omarchy plugin update   tanmay.msi-power   # re-runs setup/install.sh (idempotent)
+omarchy plugin remove   tanmay.msi-power   # runs setup/uninstall.sh → revoke via sudo
+```
+
+omarchy's CLI has no hook mechanism, so one script adds the hooks to
+`/usr/bin/omarchy-plugin-{add,update,remove}`. They are replaced whenever omarchy
+is updated — re-apply after such an update:
+
+```bash
+sudo setup/cli-hooks.sh install    # or: sudo <plugin>/setup/cli-hooks.sh install
+sudo setup/cli-hooks.sh remove     # revert later
+```
+
+If a grant/revoke runs in a non-interactive terminal, the hook prints how to
+run the script manually instead of blocking; the plugin itself still
+installs/uninstalls.
 
 For a local checkout, enable directly:
 
@@ -139,10 +161,17 @@ MSI Power/
 ## Uninstall
 
 ```bash
-omarchy plugin remove tanmay.msi-power
-sudo rm /etc/udev/rules.d/90-msi-ec.rules          # undo the sysfs/raw-EC grants (optional)
-sudo rm /etc/modules-load.d/msi-ec.conf \
-        /etc/tmpfiles.d/msi-ec.conf                # undo the driver + read grant (optional)
+omarchy plugin remove tanmay.msi-power   # also revokes the grants (setup/uninstall.sh)
+```
+
+The lifecycle hook runs `setup/uninstall.sh` before the plugin folder is
+deleted: it removes the udev rule, the modules-load/tmpfiles configs, resets
+the debugfs permissions, and deletes the `msi-ec` group (best-effort — the
+group stays if a session still holds it, and vanishes after everyone logs
+out). Manual fallback if the hook couldn't prompt for sudo:
+
+```bash
+sudo ~/.config/omarchy/plugins/tanmay.msi-power/setup/uninstall.sh
 ```
 
 The EC holds any changes you made across reboots.
