@@ -23,13 +23,14 @@ trim() { sed 's/^[[:space:]]*//; s/[[:space:]]*$//' "$1" 2>/dev/null; }
 # txt <path> [fallback] — file contents with a fallback when unreadable.
 txt() { local v; v=$(trim "$1" 2>/dev/null); if [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "${2:-}"; fi; }
 # num <path> [fallback] — first non-negative int token. Keeps the fallback
-# (e.g. -1 for "not supported") when the attribute is missing.
+# (e.g. -1 for "not supported") only when the attribute is missing; a real
+# value of zero (e.g. fan stopped at idle) stays 0.
 num() {
   [ -r "$1" ] || { printf '%s' "${2:-}"; return; }
   local v; v=$(trim "$1")
   v=${v%%[!0-9]*}
-  v=$(printf '%s' "$v" | sed 's/^0*//')
-  [ -n "$v" ] && printf '%s' "$v" || printf '%s' "${2:-}"
+  while [ "${v#0}" != "$v" ]; do v=${v#0}; done
+  [ -n "$v" ] && printf '%s' "$v" || printf '0'
 }
 # bool <path> [fallback] — msi-ec booleans are "on"/"off" (also accept 1/true).
 bool() { case "$(txt "$1" "$2")" in 1|on|true|enabled) printf 1;; *) printf 0;; esac; }
