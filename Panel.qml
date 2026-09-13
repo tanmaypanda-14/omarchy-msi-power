@@ -111,7 +111,6 @@ Panel {
     if (hasData && cpuStat.percent >= 0) p.push("CPU " + Math.round(cpuStat.percent) + "%")
     if (msi.hasCpuSensor && msi.cpuTemp >= 0) p.push(msi.cpuTemp + "°C")
     if (msi.cpuFan >= 0) p.push(msi.cpuFan + "%")
-    if (msi.hasBattery && msi.batteryCapacity >= 0) p.push(msi.batteryCapacity + "%")
     return p
   }
   readonly property string heroMeta: metaParts.join(" · ")
