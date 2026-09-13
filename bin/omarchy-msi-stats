@@ -1,0 +1,189 @@
+#!/usr/bin/python3
+"""Print one JSON snapshot of CPU/RAM/disk usage for the MSI power widget.
+
+Polled every couple of seconds by the panel. Only /proc and util-linux
+sources are used, so nothing extra needs to be installed: no lm-sensors,
+no smartmontools.
+"""
+
+import json
+import os
+import time
+
+
+def cpu_percent(sample_seconds=0.2):
+    def sample():
+        with open("/proc/stat") as f:
+            parts = f.readline().split()
+        total = sum(int(p) for p in parts[1:])
+        idle = int(parts[4])
+        return total, idle
+
+    t1, i1 = sample()
+    time.sleep(sample_seconds)
+    t2, i2 = sample()
+    dt = t2 - t1
+    if dt <= 0:
+        return 0.0
+    return round(100.0 * (1 - (i2 - i1) / dt), 1)
+
+
+def cpu_model():
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def mem_info():
+    values = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                key, rest = line.split(":", 1)
+                values[key] = int(rest.split()[0]) * 1024
+    except (OSError, ValueError):
+        return {}
+
+    total = values.get("MemTotal", 0)
+    available = values.get("MemAvailable", 0)
+    used = max(0, total - available)
+    swap_total = values.get("SwapTotal", 0)
+    swap_free = values.get("SwapFree", 0)
+    swap_used = max(0, swap_total - swap_free)
+    return {
+        "totalBytes": total,
+        "usedBytes": used,
+        "percent": round(100.0 * used / total, 1) if total else 0.0,
+        "swapTotalBytes": swap_total,
+        "swapUsedBytes": swap_used,
+        "swapPercent": round(100.0 * swap_used / swap_total, 1) if swap_total else 0.0,
+    }
+
+
+def temp_c(block_dev):
+    base = "/sys/class/block/{}/device".format(block_dev)
+    try:
+        for entry in sorted(os.listdir(base)):
+            if not entry.startswith("hwmon"):
+                continue
+            sys_temp = os.path.join(base, entry, "temp1_input")
+            if os.path.isfile(sys_temp):
+                with open(sys_temp) as f:
+                    return round(float(f.read().strip()) / 1000.0, 1)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def physical_base(source):
+    name = os.path.basename(os.path.realpath(source))
+    seen = set()
+
+    while name not in seen:
+        seen.add(name)
+        sys_path = "/sys/class/block/" + name
+        if not os.path.isdir(sys_path):
+            return name
+
+        partition = os.path.join(sys_path, "partition")
+        if os.path.isfile(partition):
+            parent = os.path.realpath(os.path.join(sys_path, ".."))
+            name = os.path.basename(parent)
+            continue
+
+        slaves = os.path.join(sys_path, "slaves")
+        if os.path.isdir(slaves) and os.listdir(slaves):
+            name = os.listdir(slaves)[0]
+            continue
+
+        return name
+    return name
+
+
+def disk_model(name):
+    try:
+        path = "/sys/class/block/{}/device/model".format(name)
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def disk_rota(name):
+    try:
+        with open("/sys/class/block/{}/queue/rotational".format(name)) as f:
+            return f.read().strip() == "1"
+    except OSError:
+        return False
+
+
+def mount_line():
+    with open("/proc/self/mounts") as f:
+        for line in f:
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            source, mount = parts[0], parts[1]
+            if not source.startswith("/dev/"):
+                continue
+            if "loop" in source:
+                continue
+            if mount.startswith(("/snap/", "/var/lib/docker")):
+                continue
+            yield source, mount
+
+
+def disks_info():
+    out = {}
+    for source, mount in mount_line():
+        try:
+            st = os.statvfs(mount)
+        except OSError:
+            continue
+        total = st.f_blocks * st.f_frsize
+        used = total - st.f_frsize * st.f_bfree
+        if total <= 0:
+            continue
+        key = physical_base(source)
+        if key not in out or total > out[key]["totalBytes"]:
+            out[key] = {
+                "device": key,
+                "mount": mount,
+                "totalBytes": total,
+                "usedBytes": max(0, used),
+                "percent": round(100.0 * used / total, 1),
+            }
+
+    disks = []
+    for key, usage in sorted(out.items()):
+        disks.append({
+            "device": key,
+            "mount": usage["mount"],
+            "totalBytes": usage["totalBytes"],
+            "usedBytes": usage["usedBytes"],
+            "percent": usage["percent"],
+            "model": disk_model(key),
+            "kind": "hdd" if disk_rota(key) else "ssd",
+            "tempC": temp_c(key),
+        })
+    return disks
+
+
+def main():
+    print(json.dumps({
+        "cpu": {
+            "model": cpu_model(),
+            "percent": cpu_percent(),
+        },
+        "mem": mem_info(),
+        "disks": disks_info(),
+    }))
+
+
+if __name__ == "__main__":
+    main()

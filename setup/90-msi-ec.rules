@@ -1,0 +1,23 @@
+# Make the MSI EC sysfs attributes writable by the `msi-ec` group so the
+# tanmay.msi-power bar widget can control the board directly. This replaces
+# the root D-Bus helper that MControlCenter installs — the helper itself is
+# only a thin write() wrapper (src/helper/msi-ec.cpp in its upstream repo),
+# and no longer needs to run.
+#
+# Installed by tanmay.msi-power/setup/grant-msi-ec-access.sh. Applied on
+# device add, so the perms survive re-plug/reboot without any daemon.
+#   - the whole platform ms-ec tree (shift/fan modes, cooler boost, webcam,
+#     fn/win keys, sensors)
+#   - the keyboard backlight LED brightness
+#   - the BAT1 charge control thresholds
+ACTION=="add", SUBSYSTEM=="platform", KERNEL=="msi-ec", \
+  RUN+="/bin/chown -R root:msi-ec /sys/devices/platform/msi-ec", \
+  RUN+="/bin/chmod -R g+w /sys/devices/platform/msi-ec"
+
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="msiacpi::kbd_backlight", \
+  RUN+="/bin/chown root:msi-ec /sys/class/leds/msiacpi::kbd_backlight/brightness", \
+  RUN+="/bin/chmod g+w /sys/class/leds/msiacpi::kbd_backlight/brightness"
+
+ACTION=="add", SUBSYSTEM=="power_supply", KERNEL=="BAT1", \
+  RUN+="/bin/chown -R root:msi-ec /sys/class/power_supply/BAT1", \
+  RUN+="/bin/chmod -R g+w /sys/class/power_supply/BAT1"

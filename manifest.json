@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "tanmay.msi-power",
+  "name": "MSI Power",
+  "version": "0.1.0",
+  "author": "Tanmay",
+  "license": "MIT",
+  "description": "MSI laptop control plus a system monitor in one bar widget: power modes, fan control and cooler boost, live CPU/EC sensors, CPU usage, RAM and storage — built on the msi-ec kernel driver, fully standalone (no MControlCenter).",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "MSI Power",
+    "description": "MSI laptop control and system monitor. All EC access goes straight to sysfs: reads are world-readable and writes are group-granted by the bundled one-shot udev setup (setup/grant-msi-ec-access.sh). MControlCenter and its root D-Bus helper are not required and never run.",
+    "category": "Power",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "hideWhenUnsupported": true,
+      "refreshMs": 2000,
+      "autoPower": false
+    },
+    "schema": [
+      {
+        "key": "hideWhenUnsupported",
+        "type": "boolean",
+        "label": "Hide the widget when msi-ec is not loaded",
+        "defaultValue": true
+      },
+      {
+        "key": "refreshMs",
+        "type": "number",
+        "label": "Sensor refresh interval (ms)",
+        "min": 500,
+        "max": 15000,
+        "defaultValue": 2000
+      },
+      {
+        "key": "autoPower",
+        "type": "boolean",
+        "label": "Auto power mode on power-source change",
+        "defaultValue": false
+      }
+    ]
+  }
+}
