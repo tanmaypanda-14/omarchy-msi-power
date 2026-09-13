@@ -2,26 +2,31 @@
 # Lifecycle hook for `omarchy plugin add` / `omarchy plugin update`: apply the
 # root-side access grants (group, udev rule, boot-time driver/grant configs).
 #
-# Idempotent — safe to run any number of times. It re-executes the bundled
-# grant script through sudo; on a non-interactive terminal (e.g. a CI-ish
-# `omarchy plugin add --yes`) it cannot prompt and just explains the manual
-# step, exiting 0 so the plugin itself still installs.
+# Idempotent — safe to run any number of times.
 #
-#   setup/install.sh                       # as your user (may prompt for sudo)
+# Elevation: interactive terminal → sudo prompt; no terminal / agent-driven →
+# pkexec, which pops omarchy's GUI password dialog. If neither is possible it
+# explains the manual step and exits 0 so the plugin itself still installs.
 
 set -euo pipefail
 
-dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+self="$(readlink -f "${BASH_SOURCE[0]}")"
+dir="$(dirname "$self")"
 grant="$dir/grant-msi-ec-access.sh"
 
+# Captured before elevation: pkexec wipes SUDO_USER and sets HOME=/root.
+invoker="${SUDO_USER:-${USER:-$(id -un)}}"
+
 if [[ $EUID -ne 0 ]]; then
-  sudo "$grant" "$@"
-  rc=$?
-  if (( rc != 0 )); then
-    echo "setup/install.sh: could not run the grant as root (exit $rc)." >&2
-    echo "  run it manually once:  sudo \"$grant\"" >&2
+  if [[ -t 0 && -t 1 ]]; then
+    exec sudo "$self" "$invoker"
   fi
+  if command -v pkexec >/dev/null 2>&1; then
+    exec pkexec "$self" "$invoker"
+  fi
+  echo "setup/install.sh: cannot get root (no interactive terminal and pkexec unavailable)." >&2
+  echo "  run it manually once:  sudo \"$grant\" $invoker" >&2
   exit 0
 fi
 
-exec "$grant" "$@"
+exec "$grant" "$invoker"

@@ -4,21 +4,25 @@
 # modules-load/tmpfiles configs, the (obsolete) modprobe leftover, the
 # debugfs permissions, and finally the msi-ec group.
 #
-# Idempotent. Re-runs as root through sudo when needed; on a non-interactive
-# terminal it explains the manual step and exits 0 so the plugin can still be
+# Idempotent. Elevation: interactive terminal → sudo prompt; no terminal /
+# agent-driven → pkexec (omarchy's GUI password dialog). If neither is
+# possible it explains the manual step and exits 0 so the plugin can still be
 # removed (grants simply stay until you run it).
 
-set -u
+set -uo pipefail
+
+self="$(readlink -f "${BASH_SOURCE[0]}")"
 
 if [ "$(id -u)" -ne 0 ]; then
-  if ! sudo -n true 2>/dev/null; then
-    if [ ! -t 0 ]; then
-      echo "setup/uninstall.sh: cannot get root without an interactive terminal." >&2
-      echo "  run it manually to revoke the grants:  sudo \"$0\"" >&2
-      exit 0
-    fi
+  if [[ -t 0 && -t 1 ]]; then
+    exec sudo "$self" "$@"
   fi
-  exec sudo "$0" "$@"
+  if command -v pkexec >/dev/null 2>&1; then
+    exec pkexec "$self" "$@"
+  fi
+  echo "setup/uninstall.sh: cannot get root (no interactive terminal and pkexec unavailable)." >&2
+  echo "  run it manually to revoke the grants:  sudo \"$self\"" >&2
+  exit 0
 fi
 
 echo "==> removing udev rule"
