@@ -14,10 +14,13 @@ Full MControlCenter coverage for MSI laptops plus a system monitor in one
 Only hardware features the embedded controller actually reports are shown —
 the EC sensor rows disappear automatically on models that lack them.
 
-> **Fan reading units**: the `msi-ec` driver exposes fan speed only as a
-> 0–100 % value (raw EC byte at `0x71`). It does not map a tachometer/RPM
-> register, and this laptop exposes no `fan[0-9]_input` hwmon device, so the
-> widget shows **fan percent** rather than RPM.
+> **Fan reading units**: the `msi-ec` driver exposes the fan only as a single
+> raw EC byte (`0x71`) — the laptop's *thermal fan level*, not a tachometer.
+> It sits at `0` while the machine is cool and steps up with temperature
+> (≈50–75 during load); it has no RPM register and no `fan[0-9]_input` hwmon
+> device, so the widget shows that level as a percent. **Cooler Boost is a
+> real, audible action on this EC but the byte stays put while it's on** — the
+> EC spins the fans up on top of the reported level without reporting it.
 
 ## How it works
 
