@@ -8,9 +8,7 @@ import "Model.js" as Model
 // actually reports. Writes also go straight to sysfs (scripts/msi-set.sh):
 // the MControlCenter helper the driver used to lean on is just a root
 // write() wrapper, so this widget does the same thing in place, granted only
-// by a udev group. The single exception is USB Power Share, which the driver
-// does not export: it is one raw EC byte (0xbf) via the ec_sys debugfs file,
-// also group-granted — no daemon involved either way.
+// by a udev group — no daemon, no extra privileges.
 Item {
   id: msi
   property var settings: ({})
@@ -37,8 +35,6 @@ Item {
   property string winKey: ""
   property int kbdLevel: 0
   property int kbdMax: 3
-  property bool usbPower: false
-  property bool hasUsbPower: false
   property bool hasShift: false
   property bool hasFan: false
   property bool hasCooler: false
@@ -118,8 +114,6 @@ Item {
     webcamBlock = snap.webcamBlock
     fnKey = snap.fnKey
     winKey = snap.winKey
-    usbPower = !!snap.usbPower
-    hasUsbPower = !!snap.hasUsbPower
     kbdLevel = Model.clampInt(snap.kbdLevel, 0, Math.max(1, snap.kbdMax), 0)
     kbdMax = Math.max(1, snap.kbdMax)
     hasShift = !!snap.hasShift
@@ -201,10 +195,6 @@ Item {
   function setWinKey(side) {
     if (side !== "left" && side !== "right") return
     _write("winkey", side)
-  }
-
-  function setUsbPower(enabled) {
-    _write("usb", enabled ? "on" : "off")
   }
 
   function setKbdLevel(level) {

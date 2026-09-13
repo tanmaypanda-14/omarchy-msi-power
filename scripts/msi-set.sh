@@ -21,12 +21,6 @@ set -u
 MEC=/sys/devices/platform/msi-ec
 LED=/sys/class/leds/msiacpi::kbd_backlight
 PSU=/sys/class/power_supply
-# Raw EC register file for the USB power-share bit (msi-ec sysfs does not
-# export it). Group-writable after setup/grant-msi-ec-access.sh.
-ECIO=""
-for cand in /dev/ec /sys/kernel/debug/ec/ec0/io; do
-  [ -e "$cand" ] && ECIO=$cand && break
-done
 
 # bool <value> — msi-ec booleans are "on"/"off"; accept the wrappers used elsewhere.
 bool() {
@@ -40,7 +34,7 @@ bool() {
 isint() { [[ "$1" =~ ^[0-9]+$ ]]; }
 
 usage() {
-  echo "usage: msi-set.sh <shift|fan|cooler|webcam|block|fnkey|winkey|kbd|end|start|usb> <value>" >&2
+  echo "usage: msi-set.sh <shift|fan|cooler|webcam|block|fnkey|winkey|kbd|end|start> <value>" >&2
 }
 
 client=${1:-}
@@ -58,44 +52,11 @@ case "$client" in
   kbd)    target="$LED/brightness"; isint "$value" || value= ;;
   end)    target="$PSU/BAT1/charge_control_end_threshold";   isint "$value" || value= ;;
   start)  target="$PSU/BAT1/charge_control_start_threshold"; isint "$value" || value= ;;
-  usb)    target=""; value=$(bool "$value"); true ;; # handled below
   *)
     usage
     exit 2
     ;;
 esac
-
-# USB power share: raw EC byte 0xbf, MControlCenter semantics (0x28 on, 0x08
-# off), matching the legacy helper so results are identical. Refuse to write
-# unless the byte is already one of those two states — writing a register that
-# holds something else would clobber a feature we don't understand.
-if [ "$client" = "usb" ]; then
-  if [ -z "$ECIO" ]; then
-    echo "error: no raw EC interface (/dev/ec or ec_sys debugfs io)" >&2
-    exit 1
-  fi
-  if [ ! -w "$ECIO" ]; then
-    self="$(readlink -f "$0" 2>/dev/null)"
-    grant="${self%/scripts/*}/setup/grant-msi-ec-access.sh"
-    echo "error: $ECIO is not writable" >&2
-    echo "grant the widget write access once (adds the ec_sys interface):" >&2
-    echo "  sudo ${grant}" >&2
-    echo "  # then log out and back in, or reboot" >&2
-    exit 1
-  fi
-  cur=$(dd if="$ECIO" bs=1 skip=191 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n')
-  want=8
-  [ "$value" = "on" ] && want=40
-  if [ "$cur" != "8" ] && [ "$cur" != "40" ]; then
-    echo "error: EC byte 0xbf does not hold a USB power-share state (0x$cur); refusing to write" >&2
-    exit 1
-  fi
-  printf "\\$(printf '%03o' "$want")" | dd of="$ECIO" bs=1 seek=191 conv=notrunc 2>/dev/null || {
-    echo "error: write to $ECIO failed" >&2
-    exit 1
-  }
-  exit 0
-fi
 
 if [ -z "$value" ] || [ -z "$target" ]; then
   echo "error: bad value for $client" >&2

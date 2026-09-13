@@ -31,16 +31,12 @@ usermod -a -G msi-ec "$target"
 echo "==> installing udev rule"
 install -m 0644 "$dir/90-msi-ec.rules" /etc/udev/rules.d/90-msi-ec.rules
 
-echo "==> enabling the msi-ec driver and the ec_sys interface"
-# msi_ec must be loaded (it is not auto-loaded on boot by the DKMS package),
-# and ec_sys places the raw EC register file under debugfs that udev never
-# sees, so perms are re-applied at boot with tmpfiles instead of a rule. Both
-# modules are preloaded via modules-load.d — no daemon needed.
-install -D -m 0644 "$dir/msi-ec-tmpfiles.conf" /etc/tmpfiles.d/msi-ec.conf
-install -D -m 0644 "$dir/ec_sys-modprobe.conf" /etc/modprobe.d/msi-ec.conf
+echo "==> enabling the msi-ec driver"
+# The DKMS package does not auto-load msi_ec at boot, so it is preloaded via
+# modules-load.d. The udev rule then re-applies the group perms whenever the
+# platform device appears — no daemon needed.
 install -D -m 0644 "$dir/modules-load.conf" /etc/modules-load.d/msi-ec.conf
 modprobe msi_ec 2>/dev/null || true
-modprobe ec_sys 2>/dev/null || true
 
 echo "==> reloading udev rules and re-triggering the MSI devices"
 udevadm control --reload-rules
@@ -58,25 +54,10 @@ chmod g+w /sys/class/leds/msiacpi::kbd_backlight/brightness 2>/dev/null || true
 chown -R root:msi-ec /sys/class/power_supply/BAT1 2>/dev/null || true
 chmod -R g+w /sys/class/power_supply/BAT1 2>/dev/null || true
 
-# Raw EC register files (USB power share). tmpfiles re-applies at boot;
-# apply right now too so a re-login is all that's needed. The debugfs tree
-# starts root-only, so the parent dir must become group-traversable as well.
-if [ -d /sys/kernel/debug/ec ]; then
-  chown -R root:msi-ec /sys/kernel/debug/ec 2>/dev/null || true
-  chmod -R g+rwX /sys/kernel/debug/ec 2>/dev/null || true
-fi
-for io in /dev/ec /sys/kernel/debug/ec/ec0/io; do
-  if [ -e "$io" ]; then
-    chown root:msi-ec "$io" 2>/dev/null || true
-    chmod g+rw "$io" 2>/dev/null || true
-  fi
-done
-
 echo
 echo "current permissions:"
 for f in /sys/devices/platform/msi-ec/shift_mode \
-         /sys/devices/platform/msi-ec/fan_mode \
-         /sys/kernel/debug/ec/ec0/io; do
+         /sys/devices/platform/msi-ec/fan_mode; do
   if [ -e "$f" ]; then ls -l "$f"; fi
 done
 
