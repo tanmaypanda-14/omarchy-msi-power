@@ -26,6 +26,8 @@ Item {
   property bool coolerBoost: false
   property int cpuTemp: -1
   property int cpuFan: -1
+  property int cpuFanRpm: 0
+  property bool hasFanRpm: false
   property int cpuBasic: -1
   property int gpuTemp: -1
   property int gpuFan: -1
@@ -107,6 +109,8 @@ Item {
     coolerBoost = snap.coolerBoost
     cpuTemp = snap.cpuTemp
     cpuFan = snap.cpuFan
+    cpuFanRpm = Model.clampInt(snap.cpuFanRpm, 0, 15000, 0)
+    hasFanRpm = !!snap.hasFanRpm
     cpuBasic = snap.cpuBasic
     gpuTemp = snap.gpuTemp
     gpuFan = snap.gpuFan

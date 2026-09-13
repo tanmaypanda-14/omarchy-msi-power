@@ -14,13 +14,14 @@ Full MControlCenter coverage for MSI laptops plus a system monitor in one
 Only hardware features the embedded controller actually reports are shown —
 the EC sensor rows disappear automatically on models that lack them.
 
-> **Fan reading units**: the `msi-ec` driver exposes the fan only as a single
-> raw EC byte (`0x71`) — the laptop's *thermal fan level*, not a tachometer.
-> It sits at `0` while the machine is cool and steps up with temperature
-> (≈50–75 during load); it has no RPM register and no `fan[0-9]_input` hwmon
-> device, so the widget shows that level as a percent. **Cooler Boost is a
-> real, audible action on this EC but the byte stays put while it's on** — the
-> EC spins the fans up on top of the reported level without reporting it.
+> **Fan reading**: the widget shows the **real fan RPM**, read the same way
+> MControlCenter does — the EC keeps a 2-byte tick counter at `0xCC/0xCD`
+> (fallback register pair MControlCenter picks for this board) and
+> `RPM = 480000 / ticks` (`src/operate.cpp:getFan1Speed`). It reads the raw
+> EC file **read-only**; when the fan is off it shows `OFF`. The number the
+> `msi-ec` sysfs driver exports (`cpu/realtime_fan_speed`, the EC's thermal
+> level at `0x71`) is *not* RPM and is not shown — note that Cooler Boost
+> spins the fans up audibly without changing either value.
 
 ## How it works
 
@@ -36,6 +37,12 @@ plain `write()` to one sysfs file; this widget does exactly that, in place:
   (`shift_mode`, `fan_mode`, `cooler_boost`, …). The kernel driver owns them
   as `root:root 0644`, so a one-shot udev setup makes them group-writable:
   a `msi-ec` group + a small rule — nothing runs in the background afterwards.
+- **Fan RPM** is the one value sysfs doesn't expose; it comes from the raw EC
+  interface (`ec_sys` debugfs) at register pair `0xCC/0xCD`, matching
+  MControlCenter's tach decoding. The group gets **read-only** access (mode
+  `0640`, no write bit), granted at boot by the same udev rule driving
+  systemd-tmpfiles — so the widget can watch the tach but cannot poke other
+  EC registers.
 
 > **Features the EC doesn't support**: MControlCenter's "fan configurations"
 > (custom fan curves) and **USB Power Share** (charging USB devices while the
@@ -65,10 +72,12 @@ sudo ~/.config/omarchy/plugins/tanmay.msi-power/setup/grant-msi-ec-access.sh
 
 This installs `setup/90-msi-ec.rules` to `/etc/udev/rules.d/`, creates the
 `msi-ec` group, adds your user to it, and re-applies the permissions
-immediately. It also loads and preloads the `msi_ec` driver at boot (the DKMS
-package does **not** auto-load it — without this step the widget hides after
-the first reboot). **Log out and back in** (or reboot) so your session joins
-the group, then verify:
+immediately. It also loads and preloads the `msi_ec` driver and the `ec_sys`
+raw interface at boot (the DKMS package does **not** auto-load them — without
+this step the widget hides after the first reboot), and grants the group
+read-only access to the raw EC file for the fan tachometer.
+**Log out and back in** (or reboot) so your session joins the group, then
+verify:
 
 ```bash
 id   # → groups, gid=1000(msi-ec), msi-ec should be listed
@@ -76,10 +85,10 @@ getent group msi-ec   # → msi-ec:x:958:<your user>
 ```
 
 That's it — no daemon, no helper package, no re-run on reboot (the udev rule
-re-enforces the sysfs perms and `/etc/modules-load.d/msi-ec.conf` reloads the
-drivers every boot). To undo it later, remove the rule and group
-(`rm /etc/udev/rules.d/90-msi-ec.rules`, re-login, then
-`groupdel msi-ec`).
+re-enforces the sysfs perms and the boot configs reload the drivers and
+re-apply the read-only raw-EC grant every boot). To undo it later, remove
+the rule and group:
+`rm /etc/udev/rules.d/90-msi-ec.rules`, re-login, then `groupdel msi-ec`.
 
 ## Install
 
@@ -121,17 +130,19 @@ MSI Power/
 │   ├── msi-read.sh     # one-line JSON snapshot of the EC state (reads)
 │   └── msi-set.sh      # apply a setting by writing the sysfs attribute directly
 └── setup/
-    ├── 90-msi-ec.rules              # udev rule: make msi-ec sysfs group-writable
+    ├── 90-msi-ec.rules              # udev rule: sysfs group-writable + raw-EC read grant
     ├── grant-msi-ec-access.sh       # one-shot root grant (group + rules + apply)
-    └── modules-load.conf            # preload msi_ec at boot
+    ├── msi-ec-tmpfiles.conf         # boot perms: debugfs traversal + io read-only (0640)
+    └── modules-load.conf            # preload msi_ec + ec_sys at boot
 ```
 
 ## Uninstall
 
 ```bash
 omarchy plugin remove tanmay.msi-power
-sudo rm /etc/udev/rules.d/90-msi-ec.rules          # undo the sysfs grant (optional)
-sudo rm /etc/modules-load.d/msi-ec.conf            # undo the driver preload (optional)
+sudo rm /etc/udev/rules.d/90-msi-ec.rules          # undo the sysfs/raw-EC grants (optional)
+sudo rm /etc/modules-load.d/msi-ec.conf \
+        /etc/tmpfiles.d/msi-ec.conf                # undo the driver + read grant (optional)
 ```
 
 The EC holds any changes you made across reboots.

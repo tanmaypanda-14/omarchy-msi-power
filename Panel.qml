@@ -292,10 +292,10 @@ Panel {
               }
 
               StatRow {
-                visible: msi.cpuFan >= 0
+                visible: msi.hasFanRpm
                 label: "CPU fan"
-                value: msi.cpuFan >= 0 ? msi.cpuFan + "%" : "—"
-                valueColor: msi.hasCooler && msi.cpuFan >= 99 ? Color.accent : root.foreground
+                value: msi.cpuFanRpm > 0 ? msi.cpuFanRpm + " rpm" : "OFF"
+                valueColor: msi.hasCooler && msi.cpuFanRpm >= 7000 ? Color.accent : root.foreground
               }
 
               StatRow {

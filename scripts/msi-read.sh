@@ -12,6 +12,14 @@ MEC=/sys/devices/platform/msi-ec
 PSU=/sys/class/power_supply
 LED=/sys/class/leds/msiacpi::kbd_backlight
 DMI=/sys/class/dmi/id
+# Read-only raw EC register file (ec_sys debugfs io, or the acpi_ec device).
+# Used only for the fan tachometer, which the msi-ec sysfs driver does not
+# export. setup/grant-msi-ec-access.sh makes it group-READABLE (never
+# writable); without it hasFanRpm=0 and the widget hides the row.
+ECIO=""
+for cand in /dev/ec /sys/kernel/debug/ec/ec0/io; do
+  [ -r "$cand" ] && ECIO=$cand && break
+done
 
 if [ ! -d "$MEC" ]; then
   printf '{"present":0}\n'
@@ -50,6 +58,25 @@ lednum() { if [ -r "$LED/$1" ]; then num "$LED/$1" "${2:-}"; else printf '%s' "$
 # "hardware doesn't expose this" from "turned off".
 avail() { [ -r "$1" ] && printf 1 || printf 0; }
 
+# fanrpm — fan1 tachometer, MControlCenter semantics (operate.cpp): the EC
+# keeps a 2-byte big-endian tick counter at 0xCC/0xCD for this Gen-2 board
+# (its detectFan1Address picks 0xCD when nonzero), and RPM = 480000/ticks.
+# Ticks of 0 mean the fan is off or no tach; values that would produce an
+# impossible RPM are treated as OFF. Emits "rpm has".
+fanrpm() {
+  [ -n "$ECIO" ] || { printf '"cpuFanRpm":0,"hasFanRpm":0'; return; }
+  local hi lo ticks
+  hi=$(dd if="$ECIO" bs=1 skip=204 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n')
+  lo=$(dd if="$ECIO" bs=1 skip=205 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n')
+  hi=${hi:-0}; lo=${lo:-0}
+  ticks=$(( (hi << 8) + lo ))
+  if [ "$ticks" -gt 0 ] && [ $((480000 / ticks)) -le 15000 ]; then
+    printf '"cpuFanRpm":%d,"hasFanRpm":1' $((480000 / ticks))
+  else
+    printf '"cpuFanRpm":0,"hasFanRpm":1'
+  fi
+}
+
 BAT=""
 for b in "$PSU"/BAT*; do
   if [ -e "$b" ] && [ -r "$b/capacity" ]; then BAT=$b; break; fi
@@ -81,6 +108,7 @@ printf '"hasCooler":%s,' "$(avail "$MEC/cooler_boost")"
 printf '"hasWebcam":%s,' "$(avail "$MEC/webcam")"
 printf '"hasWebcamBlock":%s,' "$(avail "$MEC/webcam_block")"
 printf '"hasKbd":%s,' "$(avail "$LED/brightness")"
+printf '%s,' "$(fanrpm)"
 if [ -n "$BAT" ]; then
   printf '"batteryStatus":"%s",' "$(txt "$BAT/status" "")"
   printf '"batteryCapacity":%s,' "$(num "$BAT/capacity" -1)"

@@ -31,12 +31,19 @@ usermod -a -G msi-ec "$target"
 echo "==> installing udev rule"
 install -m 0644 "$dir/90-msi-ec.rules" /etc/udev/rules.d/90-msi-ec.rules
 
-echo "==> enabling the msi-ec driver"
+echo "==> enabling the msi-ec driver and the raw EC interface"
 # The DKMS package does not auto-load msi_ec at boot, so it is preloaded via
 # modules-load.d. The udev rule then re-applies the group perms whenever the
-# platform device appears — no daemon needed.
+# platform device appears — no daemon needed. ec_sys provides the read-only
+# debugfs file used for the fan tachometer.
 install -D -m 0644 "$dir/modules-load.conf" /etc/modules-load.d/msi-ec.conf
+install -D -m 0644 "$dir/msi-ec-tmpfiles.conf" /etc/tmpfiles.d/msi-ec.conf
+# Drop the outdated write_support=1 modprobe option left by the earlier USB
+# power-share grant: ec_sys is loaded with write_support=0 and the group has
+# READ-ONLY access only.
+rm -f /etc/modprobe.d/msi-ec.conf
 modprobe msi_ec 2>/dev/null || true
+modprobe ec_sys 2>/dev/null || true
 
 echo "==> reloading udev rules and re-triggering the MSI devices"
 udevadm control --reload-rules
@@ -53,6 +60,8 @@ chown root:msi-ec /sys/class/leds/msiacpi::kbd_backlight/brightness 2>/dev/null 
 chmod g+w /sys/class/leds/msiacpi::kbd_backlight/brightness 2>/dev/null || true
 chown -R root:msi-ec /sys/class/power_supply/BAT1 2>/dev/null || true
 chmod -R g+w /sys/class/power_supply/BAT1 2>/dev/null || true
+# Raw EC interface: group READ-ONLY (mode 640 — never g+w).
+systemd-tmpfiles --create /etc/tmpfiles.d/msi-ec.conf 2>/dev/null || true
 
 echo
 echo "current permissions:"
@@ -60,6 +69,8 @@ for f in /sys/devices/platform/msi-ec/shift_mode \
          /sys/devices/platform/msi-ec/fan_mode; do
   if [ -e "$f" ]; then ls -l "$f"; fi
 done
+ls -ld /sys/kernel/debug /sys/kernel/debug/ec /sys/kernel/debug/ec/ec0 2>/dev/null
+if [ -e /sys/kernel/debug/ec/ec0/io ]; then ls -l /sys/kernel/debug/ec/ec0/io; fi
 
 echo
 echo "done. Log out and back in (or reboot) so '$target' picks up the msi-ec"

@@ -71,6 +71,8 @@ function defaultSnapshot() {
     coolerBoost: false,
     cpuTemp: -1,
     cpuFan: -1,
+    cpuFanRpm: 0,
+    hasFanRpm: false,
     cpuBasic: -1,
     gpuTemp: -1,
     gpuFan: -1,

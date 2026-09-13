@@ -14,6 +14,13 @@ ACTION=="add", SUBSYSTEM=="platform", KERNEL=="msi-ec", \
   RUN+="/bin/chown -R root:msi-ec /sys/devices/platform/msi-ec", \
   RUN+="/bin/chmod -R g+w /sys/devices/platform/msi-ec"
 
+# The fan tachometer lives on the raw EC interface (debugfs), which udev
+# cannot see directly. When the msi-ec platform device appears the module is
+# surely loaded, so apply the group's READ-ONLY debugfs permissions right
+# then — no daemon, no race with systemd-tmpfiles.
+ACTION=="add", SUBSYSTEM=="platform", KERNEL=="msi-ec", \
+  RUN+="/usr/lib/systemd/systemd-tmpfiles --create /etc/tmpfiles.d/msi-ec.conf"
+
 ACTION=="add", SUBSYSTEM=="leds", KERNEL=="msiacpi::kbd_backlight", \
   RUN+="/bin/chown root:msi-ec /sys/class/leds/msiacpi::kbd_backlight/brightness", \
   RUN+="/bin/chmod g+w /sys/class/leds/msiacpi::kbd_backlight/brightness"
