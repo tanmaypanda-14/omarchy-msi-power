@@ -14,10 +14,10 @@ self="$(readlink -f "${BASH_SOURCE[0]}")"
 dir="$(dirname "$self")"
 grant="$dir/grant-msi-ec-access.sh"
 
-# Captured before elevation: pkexec wipes SUDO_USER and sets HOME=/root.
-invoker="${SUDO_USER:-${USER:-$(id -un)}}"
-
 if [[ $EUID -ne 0 ]]; then
+  # Captured before elevation: pkexec wipes SUDO_USER and sets HOME=/root,
+  # and under pkexec $USER becomes root — so pass the original user along.
+  invoker="${SUDO_USER:-${USER:-$(id -un)}}"
   if [[ -t 0 && -t 1 ]]; then
     exec sudo "$self" "$invoker"
   fi
@@ -29,4 +29,5 @@ if [[ $EUID -ne 0 ]]; then
   exit 0
 fi
 
-exec "$grant" "$invoker"
+target="${1:-${SUDO_USER:-root}}"
+exec "$grant" "$target"
