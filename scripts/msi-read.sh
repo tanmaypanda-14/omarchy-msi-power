@@ -12,6 +12,14 @@ MEC=/sys/devices/platform/msi-ec
 PSU=/sys/class/power_supply
 LED=/sys/class/leds/msiacpi::kbd_backlight
 DMI=/sys/class/dmi/id
+# Raw EC register file (ec_sys debugfs io, or the acpi_ec device). Used only
+# for the USB power-share bit, which the msi-ec driver does not export. It is
+# group-readable after setup/grant-msi-ec-access.sh; when it is not, the
+# widget hides the toggle instead of guessing.
+ECIO=""
+for cand in /dev/ec /sys/kernel/debug/ec/ec0/io; do
+  [ -r "$cand" ] && ECIO=$cand && break
+done
 
 if [ ! -d "$MEC" ]; then
   printf '{"present":0}\n'
@@ -49,6 +57,26 @@ lednum() { if [ -r "$LED/$1" ]; then num "$LED/$1" "${2:-}"; else printf '%s' "$
 # "hardware doesn't expose this" from "turned off".
 avail() { [ -r "$1" ] && printf 1 || printf 0; }
 
+# ecbyte <offset> — raw EC byte as a decimal number, empty when unreadable.
+# Tolerates a busy EC: the debugfs file can briefly return EINVAL.
+ecbyte() {
+  [ -n "$ECIO" ] || return 1
+  dd if="$ECIO" bs=1 skip="$1" count=1 2>/dev/null | od -An -tu1 2>/dev/null | tr -d ' \n'
+}
+# usbpower — MControlCenter's USB power-share heuristic (operate.cpp): the
+# byte 0xbf holds 0x08 "off" or 0x28 "on". Only those two states count; any
+# other value means this EC uses 0xbf for something else, and we must not
+# touch it. Emits "state has".
+usbpower() {
+  local b
+  b=$(ecbyte 191)
+  case "$b" in
+    8)  printf '"usbPower":0,"hasUsbPower":1' ;;
+    40) printf '"usbPower":1,"hasUsbPower":1' ;;
+    *)  printf '"usbPower":0,"hasUsbPower":0' ;;
+  esac
+}
+
 BAT=""
 for b in "$PSU"/BAT*; do
   if [ -e "$b" ] && [ -r "$b/capacity" ]; then BAT=$b; break; fi
@@ -80,6 +108,7 @@ printf '"hasCooler":%s,' "$(avail "$MEC/cooler_boost")"
 printf '"hasWebcam":%s,' "$(avail "$MEC/webcam")"
 printf '"hasWebcamBlock":%s,' "$(avail "$MEC/webcam_block")"
 printf '"hasKbd":%s,' "$(avail "$LED/brightness")"
+printf '%s,' "$(usbpower)"
 if [ -n "$BAT" ]; then
   printf '"batteryStatus":"%s",' "$(txt "$BAT/status" "")"
   printf '"batteryCapacity":%s,' "$(num "$BAT/capacity" -1)"

@@ -8,9 +8,10 @@ import qs.Ui
 import "Model.js" as Model
 
 // MSI Power + system monitor: one bar pill. The EC snapshot (power modes,
-// fan, cooler boost, EC sensors) comes from the msi service; live system
-// stats (CPU usage, RAM, storage) are sampled by bin/omarchy-msi-stats.
-// Sensors are laid out as plain label/value rows, matching the network panel.
+// fan, cooler boost, USB power share, EC sensors) comes from the msi service;
+// live system stats (CPU usage, RAM, storage) are sampled by
+// bin/omarchy-msi-stats. Sensors are laid out as plain label/value rows,
+// matching the network panel.
 Panel {
   id: root
   moduleName: "tanmay.msi-power"
@@ -54,6 +55,7 @@ Panel {
     for (var i = 0; i < shiftModes.length; i++) rows.push("shift:" + shiftModes[i])
     for (var j = 0; j < fanModes.length; j++) rows.push("fan:" + fanModes[j])
     if (msi.hasCooler) rows.push("cooler")
+    if (msi.hasUsbPower) rows.push("usb")
     return rows
   }
 
@@ -83,6 +85,7 @@ Panel {
     if (name.indexOf("shift:") === 0) msi.setShiftMode(name.substring(6))
     else if (name.indexOf("fan:") === 0) msi.setFanMode(name.substring(4))
     else if (name === "cooler") msi.setCoolerBoost(!msi.coolerBoost)
+    else if (name === "usb") msi.setUsbPower(!msi.usbPower)
   }
 
   function fmtPercent(p) {
@@ -458,6 +461,38 @@ Panel {
               caption: "Max out all fans"
               checked: msi.coolerBoost
               onToggled: msi.setCoolerBoost(!msi.coolerBoost)
+            }
+          }
+
+          PanelSeparator {
+            visible: msi.hasUsbPower
+            foreground: root.foreground
+          }
+
+          // ------------------------------------------------------ USB POWER
+          Column {
+            visible: msi.hasUsbPower
+            width: parent.width
+            spacing: Style.space(10)
+
+            PanelSectionHeader {
+              text: "USB POWER"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(6)
+
+              ToggleRow {
+                width: parent.width
+                rowName: "usb"
+                label: "USB Power Share"
+                caption: "Charge devices while the laptop is off"
+                checked: msi.usbPower
+                onToggled: msi.setUsbPower(!msi.usbPower)
+              }
             }
           }
         }

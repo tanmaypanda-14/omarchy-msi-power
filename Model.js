@@ -80,6 +80,8 @@ function defaultSnapshot() {
     winKey: "",
     kbdLevel: 0,
     kbdMax: 3,
+    usbPower: false,
+    hasUsbPower: false,
     hasShift: false,
     hasFan: false,
     hasCooler: false,

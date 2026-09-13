@@ -5,7 +5,8 @@ Full MControlCenter coverage for MSI laptops plus a system monitor in one
 
 - **Power mode** (user scenario): Super Battery / Balanced / High Performance
   (`eco` / `comfort` / `sport` on the EC)
-- **Fan** profile (Auto / Silent / Advanced) and **Cooler Boost** toggle
+- **Fan** profile (Auto / Silent / Advanced), **Cooler Boost** toggle, and
+  **USB Power Share** (charge devices while the laptop is off)
 - **Sensors**: read-only text rows in the network-panel style — CPU usage, EC
   temperature and fan %, RAM and swap, and a per-disk storage line with disk
   temperature. EC sensor rows come from sysfs; system stats from the bundled
@@ -33,6 +34,21 @@ plain `write()` to one sysfs file; this widget does exactly that, in place:
   (`shift_mode`, `fan_mode`, `cooler_boost`, …). The kernel driver owns them
   as `root:root 0644`, so a one-shot udev setup makes them group-writable:
   a `msi-ec` group + a small rule — nothing runs in the background afterwards.
+- **USB Power Share** is the one feature the `msi-ec` driver does not export,
+  so the widget reads/writes raw EC byte `0xbf` through the `ec_sys` debugfs
+  interface — exactly what MControlCenter's helper does (`operate.cpp`,
+  `0x28` on / `0x08` off). The one-shot setup preloads `ec_sys
+  write_support=1` and grants the group read/write on the debugfs file via
+  tmpfiles. Byte-for-byte parity with MControlCenter, and the toggle only
+  appears when the byte actually holds a known power-share state, so an EC
+  that uses `0xbf` for something else is never written to.
+
+> **Features the EC doesn't support**: MControlCenter's "fan configurations"
+> (custom fan curves) and per-preset fan speeds target the older GE/GP/GF
+> gaming ECs and write legacy registers (`0x72`/`0x6a`/`0x8a`/`0x82`). This
+> Modern 15's Gen-2 EC exposes neither a curve interface nor a basic fan
+> speed (`fan_mode` is `auto/silent/advanced` only), so those controls are
+> not shown — and would be no-ops here anyway.
 
 It depends only on:
 
@@ -54,8 +70,11 @@ sudo ~/.config/omarchy/plugins/tanmay.msi-power/setup/grant-msi-ec-access.sh
 
 This installs `setup/90-msi-ec.rules` to `/etc/udev/rules.d/`, creates the
 `msi-ec` group, adds your user to it, and re-applies the permissions
-immediately. **Log out and back in** (or reboot) so your session joins the
-group, then verify:
+immediately. It also enables the raw EC interface for USB Power Share (loads
+`ec_sys` with `write_support`, installs the boot config under
+`/etc/modprobe.d/`, `/etc/modules-load.d/` and `/etc/tmpfiles.d/`).
+**Log out and back in** (or reboot) so your session joins the group, then
+verify:
 
 ```bash
 id msi-ec
@@ -107,14 +126,20 @@ MSI Power/
 │   └── msi-set.sh      # apply a setting by writing the sysfs attribute directly
 └── setup/
     ├── 90-msi-ec.rules              # udev rule: make msi-ec sysfs group-writable
-    └── grant-msi-ec-access.sh       # one-shot root grant (group + rule + apply)
+    ├── grant-msi-ec-access.sh       # one-shot root grant (group + rules + apply)
+    ├── msi-ec-tmpfiles.conf         # boot-time perms on the ec_sys debugfs file
+    ├── ec_sys-modprobe.conf         # ec_sys write_support=1 module option
+    └── ec_sys-load.conf             # preload ec_sys at boot
 ```
 
 ## Uninstall
 
 ```bash
 omarchy plugin remove tanmay.msi-power
-sudo rm /etc/udev/rules.d/90-msi-ec.rules   # undo the permission grant (optional)
+sudo rm /etc/udev/rules.d/90-msi-ec.rules          # undo the sysfs grant (optional)
+sudo rm /etc/tmpfiles.d/msi-ec.conf \
+        /etc/modprobe.d/msi-ec.conf \
+        /etc/modules-load.d/msi-ec.conf            # undo the ec_sys grant (optional)
 ```
 
 The EC holds any changes you made across reboots.

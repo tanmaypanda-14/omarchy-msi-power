@@ -31,6 +31,15 @@ usermod -a -G msi-ec "$target"
 echo "==> installing udev rule"
 install -m 0644 "$dir/90-msi-ec.rules" /etc/udev/rules.d/90-msi-ec.rules
 
+echo "==> enabling the ec_sys interface (raw EC, for USB power share)"
+# ec_sys puts a register file under debugfs that udev never sees, so perms are
+# re-applied at boot with tmpfiles instead of a rule, and the module is
+# preloaded with write support via modules-load/modprobe.d — no daemon needed.
+install -D -m 0644 "$dir/msi-ec-tmpfiles.conf" /etc/tmpfiles.d/msi-ec.conf
+install -D -m 0644 "$dir/ec_sys-modprobe.conf" /etc/modprobe.d/msi-ec.conf
+install -D -m 0644 "$dir/ec_sys-load.conf" /etc/modules-load.d/msi-ec.conf
+modprobe ec_sys 2>/dev/null || true
+
 echo "==> reloading udev rules and re-triggering the MSI devices"
 udevadm control --reload-rules
 udevadm trigger /sys/devices/platform/msi-ec 2>/dev/null || true
@@ -47,10 +56,25 @@ chmod g+w /sys/class/leds/msiacpi::kbd_backlight/brightness 2>/dev/null || true
 chown -R root:msi-ec /sys/class/power_supply/BAT1 2>/dev/null || true
 chmod -R g+w /sys/class/power_supply/BAT1 2>/dev/null || true
 
+# Raw EC register files (USB power share). tmpfiles re-applies at boot;
+# apply right now too so a re-login is all that's needed. The debugfs tree
+# starts root-only, so the parent dir must become group-traversable as well.
+if [ -d /sys/kernel/debug/ec ]; then
+  chown -R root:msi-ec /sys/kernel/debug/ec 2>/dev/null || true
+  chmod -R g+rwX /sys/kernel/debug/ec 2>/dev/null || true
+fi
+for io in /dev/ec /sys/kernel/debug/ec/ec0/io; do
+  if [ -e "$io" ]; then
+    chown root:msi-ec "$io" 2>/dev/null || true
+    chmod g+rw "$io" 2>/dev/null || true
+  fi
+done
+
 echo
 echo "current permissions:"
 for f in /sys/devices/platform/msi-ec/shift_mode \
-         /sys/devices/platform/msi-ec/fan_mode; do
+         /sys/devices/platform/msi-ec/fan_mode \
+         /sys/kernel/debug/ec/ec0/io; do
   if [ -e "$f" ]; then ls -l "$f"; fi
 done
 
