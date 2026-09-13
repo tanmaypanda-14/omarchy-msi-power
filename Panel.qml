@@ -105,16 +105,6 @@ Panel {
     return root.foreground
   }
 
-  // Hero meta: live system + EC picture in one line.
-  readonly property var metaParts: {
-    var p = []
-    if (hasData && cpuStat.percent >= 0) p.push("CPU " + Math.round(cpuStat.percent) + "%")
-    if (msi.hasCpuSensor && msi.cpuTemp >= 0) p.push(msi.cpuTemp + "°C")
-    if (msi.cpuFan >= 0) p.push(msi.cpuFan + "%")
-    return p
-  }
-  readonly property string heroMeta: metaParts.join(" · ")
-
   function refreshStats() {
     if (!statsProc.running) statsProc.running = true
   }
@@ -234,7 +224,6 @@ Panel {
             id: hero
             width: parent.width
             title: msi.model !== "" ? msi.model : "MSI Laptop"
-            meta: heroMeta
             detail: msi.shiftMode !== "" ? Model.shiftModeName(msi.shiftMode) : ""
             foreground: root.foreground
             fontFamily: root.fontFamily
