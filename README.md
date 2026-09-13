@@ -70,20 +70,23 @@ sudo ~/.config/omarchy/plugins/tanmay.msi-power/setup/grant-msi-ec-access.sh
 
 This installs `setup/90-msi-ec.rules` to `/etc/udev/rules.d/`, creates the
 `msi-ec` group, adds your user to it, and re-applies the permissions
-immediately. It also enables the raw EC interface for USB Power Share (loads
-`ec_sys` with `write_support`, installs the boot config under
+immediately. It also loads and preloads the `msi_ec` driver at boot (the DKMS
+package does **not** auto-load it) and enables the raw EC interface for USB
+Power Share (`ec_sys` with `write_support`, boot config under
 `/etc/modprobe.d/`, `/etc/modules-load.d/` and `/etc/tmpfiles.d/`).
 **Log out and back in** (or reboot) so your session joins the group, then
 verify:
 
 ```bash
-id msi-ec
+id   # → groups, gid=1000(msi-ec), msi-ec should be listed
+getent group msi-ec   # → msi-ec:x:958:<your user>
 ```
 
 That's it — no daemon, no helper package, no re-run on reboot (the udev rule
-re-enforces the perms every time the device appears). To undo it later,
-remove the rule and group (`rm /etc/udev/rules.d/90-msi-ec.rules`, re-login,
-then `groupdel msi-ec`).
+re-enforces the sysfs perms and `/etc/modules-load.d/msi-ec.conf` reloads the
+drivers every boot). To undo it later, remove the rule and group
+(`rm /etc/udev/rules.d/90-msi-ec.rules`, re-login, then
+`groupdel msi-ec`).
 
 ## Install
 
@@ -129,7 +132,7 @@ MSI Power/
     ├── grant-msi-ec-access.sh       # one-shot root grant (group + rules + apply)
     ├── msi-ec-tmpfiles.conf         # boot-time perms on the ec_sys debugfs file
     ├── ec_sys-modprobe.conf         # ec_sys write_support=1 module option
-    └── ec_sys-load.conf             # preload ec_sys at boot
+    └── modules-load.conf            # preload msi_ec + ec_sys at boot
 ```
 
 ## Uninstall

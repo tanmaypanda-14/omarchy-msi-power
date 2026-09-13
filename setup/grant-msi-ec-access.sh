@@ -9,7 +9,7 @@
 #
 # Safe to re-run (idempotent). After it finishes you must start a NEW login
 # session (log out/in or reboot) so your process gains the msi-ec group;
-# verify with:  id msi-ec
+# verify with:  getent group msi-ec
 
 set -e
 
@@ -31,13 +31,15 @@ usermod -a -G msi-ec "$target"
 echo "==> installing udev rule"
 install -m 0644 "$dir/90-msi-ec.rules" /etc/udev/rules.d/90-msi-ec.rules
 
-echo "==> enabling the ec_sys interface (raw EC, for USB power share)"
-# ec_sys puts a register file under debugfs that udev never sees, so perms are
-# re-applied at boot with tmpfiles instead of a rule, and the module is
-# preloaded with write support via modules-load/modprobe.d — no daemon needed.
+echo "==> enabling the msi-ec driver and the ec_sys interface"
+# msi_ec must be loaded (it is not auto-loaded on boot by the DKMS package),
+# and ec_sys places the raw EC register file under debugfs that udev never
+# sees, so perms are re-applied at boot with tmpfiles instead of a rule. Both
+# modules are preloaded via modules-load.d — no daemon needed.
 install -D -m 0644 "$dir/msi-ec-tmpfiles.conf" /etc/tmpfiles.d/msi-ec.conf
 install -D -m 0644 "$dir/ec_sys-modprobe.conf" /etc/modprobe.d/msi-ec.conf
-install -D -m 0644 "$dir/ec_sys-load.conf" /etc/modules-load.d/msi-ec.conf
+install -D -m 0644 "$dir/modules-load.conf" /etc/modules-load.d/msi-ec.conf
+modprobe msi_ec 2>/dev/null || true
 modprobe ec_sys 2>/dev/null || true
 
 echo "==> reloading udev rules and re-triggering the MSI devices"
@@ -79,5 +81,5 @@ for f in /sys/devices/platform/msi-ec/shift_mode \
 done
 
 echo
-echo "done. Log out and back in (or reboot) so '$target' joins the msi-ec group,"
-echo "then verify with:  id msi-ec"
+echo "done. Log out and back in (or reboot) so '$target' picks up the msi-ec"
+echo "group, then verify with:  getent group msi-ec   (and:  id "$target")"
