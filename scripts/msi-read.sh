@@ -26,16 +26,30 @@ if [ ! -d "$MEC" ]; then
   exit 0
 fi
 
-# trim <path> — strip surrounding whitespace, tolerate transient EC errors.
-trim() { sed 's/^[[:space:]]*//; s/[[:space:]]*$//' "$1" 2>/dev/null; }
+# readtrim <path> <varname> — file contents minus surrounding whitespace.
+# Zero forks, zero execs: $(<...) is a bash optimization that reads without
+# spawning a subshell, the stripping is parameter expansion, and printf -v
+# assigns to the caller's variable (dynamic scope) without one either.
+readtrim() {
+  # Missing/unreadable -> empty output, nonzero exit (same contract trim had:
+  # sed failed silently on a missing file). The [ -r ] pre-check is a builtin
+  # stat; without it the failed open inside $(<...) would leak an error past
+  # redirections, since expansion runs before the command's own 2>/dev/null.
+  [ -r "$1" ] || { printf -v "$2" '%s' ""; return 1; }
+  local _v
+  _v=$(<"$1") || _v=""
+  _v=${_v#"${_v%%[![:space:]]*}"}
+  _v=${_v%"${_v##*[![:space:]]}"}
+  printf -v "$2" '%s' "$_v"
+}
 # txt <path> [fallback] — file contents with a fallback when unreadable.
-txt() { local v; v=$(trim "$1" 2>/dev/null); if [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "${2:-}"; fi; }
+txt() { local v; readtrim "$1" v; if [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "${2:-}"; fi; }
 # num <path> [fallback] — first non-negative int token. Keeps the fallback
 # (e.g. -1 for "not supported") only when the attribute is missing; a real
 # value of zero (e.g. fan stopped at idle) stays 0.
 num() {
   [ -r "$1" ] || { printf '%s' "${2:-}"; return; }
-  local v; v=$(trim "$1")
+  local v; readtrim "$1" v
   v=${v%%[!0-9]*}
   while [ "${v#0}" != "$v" ]; do v=${v#0}; done
   [ -n "$v" ] && printf '%s' "$v" || printf '0'
@@ -45,7 +59,7 @@ bool() { case "$(txt "$1" "$2")" in 1|on|true|enabled) printf 1;; *) printf 0;; 
 # list — sysfs newline list (e.g. available_shift_modes) as a JSON string array.
 list() {
   local out="" tok ls
-  ls=$(trim "$1" 2>/dev/null)
+  readtrim "$1" ls
   if [ -z "$ls" ]; then printf '[]'; return; fi
   while IFS= read -r tok; do
     [ -n "$tok" ] && out="$out\"${tok}\","
@@ -65,10 +79,14 @@ avail() { [ -r "$1" ] && printf 1 || printf 0; }
 # impossible RPM are treated as OFF. Emits "rpm has".
 fanrpm() {
   [ -n "$ECIO" ] || { printf '"cpuFanRpm":0,"hasFanRpm":0'; return; }
-  local hi lo ticks
-  hi=$(dd if="$ECIO" bs=1 skip=204 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n')
-  lo=$(dd if="$ECIO" bs=1 skip=205 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n')
-  hi=${hi:-0}; lo=${lo:-0}
+  local hi lo ticks pair
+  # One 2-byte read + one od (was: two dd, two od, one tr). Besides spawning
+  # fewer processes this snapshots both tick bytes atomically — two separate
+  # dd seeks could straddle a counter update and mix bytes from two moments.
+  pair=$(dd if="$ECIO" bs=1 skip=204 count=2 2>/dev/null | od -An -tu1)
+  read -r hi lo <<< "$pair"
+  case "$hi" in ''|*[!0-9]*) hi=0;; esac
+  case "$lo" in ''|*[!0-9]*) lo=0;; esac
   ticks=$(( (hi << 8) + lo ))
   if [ "$ticks" -gt 0 ] && [ $((480000 / ticks)) -le 15000 ]; then
     printf '"cpuFanRpm":%d,"hasFanRpm":1' $((480000 / ticks))
