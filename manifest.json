@@ -21,7 +21,8 @@
     "defaults": {
       "hideWhenUnsupported": true,
       "refreshMs": 2000,
-      "autoPower": false
+      "autoPower": false,
+      "tempAlertAt": 70
     },
     "schema": [
       {
@@ -43,6 +44,14 @@
         "type": "boolean",
         "label": "Auto power mode on power-source change",
         "defaultValue": false
+      },
+      {
+        "key": "tempAlertAt",
+        "type": "number",
+        "label": "Temp (°C) that turns the bar icon red",
+        "min": 40,
+        "max": 100,
+        "defaultValue": 70
       }
     ]
   }

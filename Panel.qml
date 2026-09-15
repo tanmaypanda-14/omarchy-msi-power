@@ -33,9 +33,12 @@ Panel {
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color warn: Qt.lighter(urgent, 1.35)
   readonly property color dim: Qt.darker(foreground, 1.55)
-  readonly property color barIconColor: msi.present
-    ? (msi.coolerBoost ? urgent : barForeground)
-    : Qt.darker(barForeground, 1.55)
+  readonly property color barIconColor: !msi.present
+    ? Qt.darker(barForeground, 1.55)
+    : ((msi.coolerBoost || root.tempHot) ? urgent : barForeground)
+  readonly property int tempAlertAt: Number(setting("tempAlertAt", 70)) || 70
+  readonly property bool tempHot: (msi.hasCpuSensor && msi.cpuTemp >= tempAlertAt)
+    || (msi.hasGpuSensor && msi.gpuTemp >= tempAlertAt)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property var shiftModes: Model.supportedShiftModes(msi)
