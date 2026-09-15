@@ -36,7 +36,7 @@ Panel {
   readonly property color barIconColor: !msi.present
     ? Qt.darker(barForeground, 1.55)
     : ((msi.coolerBoost || root.tempHot) ? urgent : barForeground)
-  readonly property int tempAlertAt: Number(setting("tempAlertAt", 70)) || 70
+  readonly property int tempAlertAt: Number(setting("tempAlertAt", 80)) || 80
   readonly property bool tempHot: (msi.hasCpuSensor && msi.cpuTemp >= tempAlertAt)
     || (msi.hasGpuSensor && msi.gpuTemp >= tempAlertAt)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family

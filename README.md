@@ -7,7 +7,7 @@ Full MControlCenter coverage for MSI laptops plus a system monitor in one
   (`eco` / `comfort` / `sport` on the EC)
 - **Fan** profile (Auto / Silent / Advanced) and **Cooler Boost** toggle
 - **Heat alert**: the bar icon turns red when the CPU or GPU temperature
-  reaches `tempAlertAt` (default 70 °C, configurable in the plugin settings)
+  reaches `tempAlertAt` (default 80 °C, configurable in the plugin settings)
 - **Sensors**: read-only text rows in the network-panel style — CPU usage, EC
   temperature and fan %, RAM and swap, and a per-disk storage line with disk
   temperature. EC sensor rows come from sysfs; system stats from the bundled

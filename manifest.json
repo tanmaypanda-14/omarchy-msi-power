@@ -22,7 +22,7 @@
       "hideWhenUnsupported": true,
       "refreshMs": 2000,
       "autoPower": false,
-      "tempAlertAt": 70
+      "tempAlertAt": 80
     },
     "schema": [
       {
@@ -51,7 +51,7 @@
         "label": "Temp (°C) that turns the bar icon red",
         "min": 40,
         "max": 100,
-        "defaultValue": 70
+        "defaultValue": 80
       }
     ]
   }
