@@ -60,7 +60,6 @@ Panel {
     if (msi.hasFanCurve) {
       var presets = Model.fanPresetNames()
       for (var p = 0; p < presets.length; p++) rows.push("preset:" + presets[p])
-      if (fanModes.indexOf("advanced") >= 0) rows.push("fan:advanced")
     } else {
       for (var j = 0; j < fanModes.length; j++) rows.push("fan:" + fanModes[j])
     }
@@ -421,8 +420,8 @@ Panel {
 
           // ----------------------------------------------------------- FAN
           // With fan tables on the EC: 3 one-tap manual presets (fixed
-          // speeds via the MCC Advanced tables) + Advanced for the current
-          // EC curve. Without tables: the raw EC fan modes.
+          // speeds via the MCC Advanced tables, auto-enables Advanced).
+          // Without tables: the raw EC fan modes.
           Column {
             visible: fanModes.length > 0 || msi.hasCooler
             width: parent.width
@@ -481,16 +480,6 @@ Panel {
                   onClicked: msi.applyFanPreset(modelData)
                 }
               }
-
-              ModeRow {
-                visible: fanModes.indexOf("advanced") >= 0
-                width: parent.width
-                rowName: "fan:advanced"
-                text: Model.fanModeName("advanced")
-                caption: "Current EC curve"
-                selected: msi.fanMode === "advanced" && Model.matchingPreset(msi) === ""
-                onClicked: msi.setFanMode("advanced")
-              }
             }
 
             ToggleRow {
@@ -534,7 +523,7 @@ Panel {
         return
       }
       if (at + 1 < presets.length) msi.applyFanPreset(presets[at + 1])
-      else if (fanModes.indexOf("advanced") >= 0) msi.setFanMode("advanced")
+      else msi.applyFanPreset(presets[0])
       return
     }
     var next = nextFan(1)
