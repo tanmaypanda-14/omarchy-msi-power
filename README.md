@@ -5,13 +5,13 @@ Full MControlCenter coverage for MSI laptops plus a system monitor in one
 
 - **Power mode** (user scenario): Super Battery / Balanced / High Performance
   (`eco` / `comfort` / `sport` on the EC)
-- **Fan** profile (Auto / Silent / Advanced) and **Cooler Boost** toggle
-- **Fan curve** (MControlCenter-style Advanced tab): when the EC keeps curve
-  tables, a FAN CURVE section appears with 6 temp + 7 speed points per fan —
-  same registers MControlCenter edits (`0x6A/0x72/0x82/0x8A`), written through
-  the validated `scripts/msi-fan-curve.sh` (root-scoped via sudoers, like
-  MControlCenter's root helper). Active in Advanced fan mode; the EC keeps
-  curves across reboots.
+- **Fan** — 3 one-tap manual presets (Quiet / Balanced / Performance: fixed
+  speed tables via the MControlCenter Advanced registers
+  `0x6A/0x72/0x82/0x8A`, applied with `scripts/msi-fan-curve.sh`, auto-flips
+  the EC to Advanced) plus **Advanced** for the current EC curve, and a
+  **Cooler Boost** toggle. The active preset is detected from the EC's live
+  tables and ticked. On ECs without curve tables the raw EC fan modes
+  (Auto / Silent / Advanced) are shown instead.
 - **Heat alert**: the bar icon turns red when the CPU or GPU temperature
   reaches `tempAlertAt` (default 80 °C, configurable in the plugin settings)
 - **Sensors**: read-only text rows in the network-panel style — CPU usage, EC

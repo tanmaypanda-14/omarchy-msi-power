@@ -41,54 +41,6 @@ Panel {
     || (msi.hasGpuSensor && msi.gpuTemp >= tempAlertAt)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  // Draft MCC-style fan curves (6 temps + 7 speeds per fan). Synced from
-  // the EC when the panel opens; background polls never clobber a draft.
-  property var editFan1Temps: []
-  property var editFan1Speeds: []
-  property var editFan2Temps: []
-  property var editFan2Speeds: []
-
-  function syncCurves() {
-    if (msi.fan1Temps.length === 6) editFan1Temps = msi.fan1Temps.slice(0)
-    if (msi.fan1Speeds.length === 7) editFan1Speeds = msi.fan1Speeds.slice(0)
-    if (msi.fan2Temps.length === 6) editFan2Temps = msi.fan2Temps.slice(0)
-    if (msi.fan2Speeds.length === 7) editFan2Speeds = msi.fan2Speeds.slice(0)
-  }
-
-  function curveBump(fan, kind, index, delta) {
-    var src = fan === "fan1"
-      ? (kind === "temp" ? editFan1Temps : editFan1Speeds)
-      : (kind === "temp" ? editFan2Temps : editFan2Speeds)
-    if (!src || index < 0 || index >= src.length) return
-    var min = kind === "temp" ? 30 : 0
-    var v = Math.max(min, Math.min(100, Math.round(Number(src[index]) + delta)))
-    if (isNaN(v)) return
-    var next = src.slice(0)
-    next[index] = v
-    if (fan === "fan1") {
-      if (kind === "temp") editFan1Temps = next
-      else editFan1Speeds = next
-    } else {
-      if (kind === "temp") editFan2Temps = next
-      else editFan2Speeds = next
-    }
-  }
-
-  function curveReset(fan) {
-    if (fan === "fan1") {
-      editFan1Temps = msi.fan1Temps.slice(0)
-      editFan1Speeds = msi.fan1Speeds.slice(0)
-    } else {
-      editFan2Temps = msi.fan2Temps.slice(0)
-      editFan2Speeds = msi.fan2Speeds.slice(0)
-    }
-  }
-
-  function applyFanBlock(fan) {
-    if (fan === "fan1") msi.applyFanCurve("fan1", editFan1Temps, editFan1Speeds)
-    else msi.applyFanCurve("fan2", editFan2Temps, editFan2Speeds)
-  }
-
   readonly property var shiftModes: Model.supportedShiftModes(msi)
   readonly property var fanModes: Model.supportedFanModes(msi)
 
@@ -100,10 +52,18 @@ Panel {
   readonly property var disksStat: hasData ? stats.disks || [] : []
 
   // Every focusable row in order, so j/k never land on a hidden control.
+  // With fan tables on the EC the fan list is the 3 manual presets plus
+  // Advanced; without them it is the raw EC fan modes.
   readonly property var cursorRows: {
     var rows = []
     for (var i = 0; i < shiftModes.length; i++) rows.push("shift:" + shiftModes[i])
-    for (var j = 0; j < fanModes.length; j++) rows.push("fan:" + fanModes[j])
+    if (msi.hasFanCurve) {
+      var presets = Model.fanPresetNames()
+      for (var p = 0; p < presets.length; p++) rows.push("preset:" + presets[p])
+      if (fanModes.indexOf("advanced") >= 0) rows.push("fan:advanced")
+    } else {
+      for (var j = 0; j < fanModes.length; j++) rows.push("fan:" + fanModes[j])
+    }
     if (msi.hasCooler) rows.push("cooler")
     return rows
   }
@@ -132,6 +92,7 @@ Panel {
   function activateCursor() {
     var name = cursorRow
     if (name.indexOf("shift:") === 0) msi.setShiftMode(name.substring(6))
+    else if (name.indexOf("preset:") === 0) msi.applyFanPreset(name.substring(7))
     else if (name.indexOf("fan:") === 0) msi.setFanMode(name.substring(4))
     else if (name === "cooler") msi.setCoolerBoost(!msi.coolerBoost)
   }
@@ -170,7 +131,6 @@ Panel {
     if (panelFlick) panelFlick.contentY = 0
     msi.refresh()
     refreshStats()
-    root.syncCurves()
     Qt.callLater(function () { keyCatcher.forceActiveFocus() })
   }
 
@@ -178,8 +138,6 @@ Panel {
     id: msi
     settings: root.settings
     pluginDir: root.pluginDir
-    // First poll after login fills the drafts if the panel is open.
-    onFan1TempsChanged: if (root.opened && root.editFan1Temps.length === 0) root.syncCurves()
   }
 
   Timer {
@@ -213,7 +171,7 @@ Panel {
     function cycleShift(): string { msi.cycleShift(1); return "ok" }
     function status(): string {
       return msi.present
-        ? Model.shiftModeName(msi.shiftMode) + " · " + Model.fanModeName(msi.fanMode)
+        ? Model.shiftModeName(msi.shiftMode) + " · " + root.fanDisplay()
         : "msi-ec not loaded"
     }
   }
@@ -222,7 +180,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰓅"
+    text: ""
     foreground: root.barIconColor
     tooltipText: "MSI Power Control"
     onPressed: function (buttonCode) {
@@ -255,7 +213,7 @@ Panel {
         var key = String(t).toLowerCase()
         if (key === "r") { msi.refresh(); root.refreshStats() }
         else if (key === "m") msi.cycleShift(1)
-        else if (key === "f") msi.setFanMode(nextFan(1))
+        else if (key === "f") root.cycleFan()
       }
 
       Flickable {
@@ -285,7 +243,7 @@ Panel {
             iconComponent: Component {
               Text {
                 textFormat: Text.PlainText
-                text: "󰓅"
+                text: ""
                 color: msi.coolerBoost ? root.urgent : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.display
@@ -462,6 +420,9 @@ Panel {
           }
 
           // ----------------------------------------------------------- FAN
+          // With fan tables on the EC: 3 one-tap manual presets (fixed
+          // speeds via the MCC Advanced tables) + Advanced for the current
+          // EC curve. Without tables: the raw EC fan modes.
           Column {
             visible: fanModes.length > 0 || msi.hasCooler
             width: parent.width
@@ -473,8 +434,19 @@ Panel {
               fontFamily: root.fontFamily
             }
 
+            Text {
+              textFormat: Text.PlainText
+              visible: msi.curveStatus !== ""
+              width: parent.width
+              text: msi.curveStatus
+              color: root.urgent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
+
             Column {
-              visible: fanModes.length > 0
+              visible: !msi.hasFanCurve && fanModes.length > 0
               width: parent.width
               spacing: Style.space(6)
 
@@ -492,6 +464,35 @@ Panel {
               }
             }
 
+            Column {
+              visible: msi.hasFanCurve
+              width: parent.width
+              spacing: Style.space(6)
+
+              Repeater {
+                model: Model.fanPresetNames()
+                ModeRow {
+                  required property var modelData
+                  width: parent.width
+                  rowName: "preset:" + modelData
+                  text: Model.fanPresetLabel(modelData)
+                  caption: Model.fanPresetCaption(modelData)
+                  selected: Model.matchingPreset(msi) === modelData
+                  onClicked: msi.applyFanPreset(modelData)
+                }
+              }
+
+              ModeRow {
+                visible: fanModes.indexOf("advanced") >= 0
+                width: parent.width
+                rowName: "fan:advanced"
+                text: Model.fanModeName("advanced")
+                caption: "Current EC curve"
+                selected: msi.fanMode === "advanced" && Model.matchingPreset(msi) === ""
+                onClicked: msi.setFanMode("advanced")
+              }
+            }
+
             ToggleRow {
               visible: msi.hasCooler
               width: parent.width
@@ -500,60 +501,6 @@ Panel {
               caption: "Max out all fans"
               checked: msi.coolerBoost
               onToggled: msi.setCoolerBoost(!msi.coolerBoost)
-            }
-          }
-
-          PanelSeparator {
-            visible: msi.hasFanCurve
-            foreground: root.foreground
-          }
-
-          // --------------------------------- FAN CURVE (MCC Advanced)
-          // Same tables MControlCenter edits (operate.cpp: 6 temps + 7
-          // speeds per fan at 0x6A/0x72/0x82/0x8A). Saved straight to the
-          // EC via the validated curve script; active in Advanced fan mode.
-          Column {
-            visible: msi.hasFanCurve
-            width: parent.width
-            spacing: Style.space(10)
-
-            PanelSectionHeader {
-              text: "FAN CURVE"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              width: parent.width
-              text: msi.fanMode === "advanced"
-                ? "Live on the EC — takes effect now, kept across reboots · −/+ = ±1, right-click = ±5"
-                : "Saved to the EC, takes effect in Advanced fan mode · −/+ = ±1, right-click = ±5"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              visible: msi.curveStatus !== ""
-              width: parent.width
-              text: msi.curveStatus
-              color: root.urgent
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.WordWrap
-            }
-
-            CurveFanBlock {
-              fan: "fan1"
-              title: "FAN 1 · CPU"
-            }
-
-            CurveFanBlock {
-              fan: "fan2"
-              title: "FAN 2"
             }
           }
         }
@@ -574,6 +521,30 @@ Panel {
     var at = modes.indexOf(msi.fanMode)
     if (at < 0) at = 0
     return modes[(at + 1) % modes.length]
+  }
+
+  // Keyboard 'f' cycles the same list the FAN section shows.
+  function cycleFan() {
+    if (msi.hasFanCurve) {
+      var presets = Model.fanPresetNames()
+      var match = Model.matchingPreset(msi)
+      var at = presets.indexOf(match)
+      if (msi.fanMode !== "advanced" || at < 0) {
+        msi.applyFanPreset(presets[0])
+        return
+      }
+      if (at + 1 < presets.length) msi.applyFanPreset(presets[at + 1])
+      else if (fanModes.indexOf("advanced") >= 0) msi.setFanMode("advanced")
+      return
+    }
+    var next = nextFan(1)
+    if (next !== "") msi.setFanMode(next)
+  }
+
+  function fanDisplay() {
+    var match = Model.matchingPreset(msi)
+    if (match !== "") return Model.fanPresetLabel(match)
+    return Model.fanModeName(msi.fanMode)
   }
 
   component ModeRow: CursorSurface {
@@ -706,170 +677,6 @@ Panel {
         hasCursor: toggleRow.hasCursor
         foreground: root.foreground
         onToggled: toggleRow.toggled()
-      }
-    }
-  }
-
-  // One MCC-style fan table: 6 temp points + 7 speed points with
-  // -/+ steppers (left-click ±1, right-click ±5), Reset and Apply.
-  component CurveFanBlock: Column {
-    id: fanBlock
-    property string fan: "fan1"
-    property string title: ""
-
-    width: parent ? parent.width : 0
-    spacing: Style.space(6)
-
-    readonly property var temps: fan === "fan1" ? root.editFan1Temps : root.editFan2Temps
-    readonly property var speeds: fan === "fan1" ? root.editFan1Speeds : root.editFan2Speeds
-    readonly property bool valid: Model.validCurve(temps, speeds)
-
-    Text {
-      textFormat: Text.PlainText
-      width: parent.width
-      text: fanBlock.title + (fanBlock.valid ? "" : " · temps must rise 30–100°C")
-      color: root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.body
-    }
-
-    Text {
-      textFormat: Text.PlainText
-      text: "TEMP °C"
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-    }
-
-    Repeater {
-      model: 6
-      CurvePointRow {
-        required property int index
-        width: fanBlock.width
-        label: "T" + (index + 1)
-        display: fanBlock.temps.length > index ? fanBlock.temps[index] + "°C" : "—"
-        onBump: function (d) { root.curveBump(fanBlock.fan, "temp", index, d) }
-      }
-    }
-
-    Text {
-      textFormat: Text.PlainText
-      text: "SPEED %"
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-    }
-
-    Repeater {
-      model: 7
-      CurvePointRow {
-        required property int index
-        width: fanBlock.width
-        label: "P" + (index + 1)
-        display: fanBlock.speeds.length > index ? fanBlock.speeds[index] + "%" : "—"
-        onBump: function (d) { root.curveBump(fanBlock.fan, "speed", index, d) }
-      }
-    }
-
-    RowLayout {
-      width: fanBlock.width
-      spacing: Style.space(8)
-
-      Item { Layout.fillWidth: true; height: 1 }
-
-      Text {
-        textFormat: Text.PlainText
-        text: "Reset"
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        MouseArea {
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: root.curveReset(fanBlock.fan)
-        }
-      }
-
-      Text {
-        textFormat: Text.PlainText
-        text: "Apply"
-        color: root.foreground
-        opacity: fanBlock.valid ? 1.0 : 0.4
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        font.bold: true
-        MouseArea {
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: if (fanBlock.valid) root.applyFanBlock(fanBlock.fan)
-        }
-      }
-    }
-  }
-
-  component CurvePointRow: RowLayout {
-    id: pointRow
-    property string label: ""
-    property string display: ""
-
-    signal bump(int delta)
-
-    spacing: Style.space(8)
-
-    Text {
-      textFormat: Text.PlainText
-      Layout.minimumWidth: Style.space(28)
-      text: pointRow.label
-      color: Qt.darker(root.foreground, 1.35)
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-    }
-
-    Item { Layout.fillWidth: true; height: 1 }
-
-    Text {
-      textFormat: Text.PlainText
-      text: "−"
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.body
-      MouseArea {
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: function (mouse) {
-          pointRow.bump(mouse.button === Qt.RightButton ? -5 : -1)
-        }
-      }
-    }
-
-    Text {
-      textFormat: Text.PlainText
-      Layout.minimumWidth: Style.space(56)
-      horizontalAlignment: Text.AlignHCenter
-      text: pointRow.display
-      color: root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-    }
-
-    Text {
-      textFormat: Text.PlainText
-      text: "+"
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.body
-      MouseArea {
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: function (mouse) {
-          pointRow.bump(mouse.button === Qt.RightButton ? 5 : 1)
-        }
       }
     }
   }

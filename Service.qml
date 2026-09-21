@@ -196,23 +196,27 @@ Item {
     _write("fan", mode)
   }
 
-  // MCC Advanced tab: write one fan's curve through the validated
-  // root-scoped curve script (raw EC, like MCC's root helper), then
-  // re-read the EC so the panel shows what actually landed.
-  function applyFanCurve(fan, temps, speeds) {
-    if (fan !== "fan1" && fan !== "fan2") return
-    if (!Model.validCurve(temps, speeds)) {
-      curveStatus = "Invalid curve: 6 rising temps (30-100°C) + 7 speeds (0-100%)"
+  // One-tap manual fan preset: write the preset speeds (keeping the EC's
+  // current temps) through the validated root-scoped curve script (raw EC,
+  // like MCC's root helper), flip the EC to advanced so the table is live,
+  // then re-read the EC so the panel shows what actually landed.
+  function applyFanPreset(name) {
+    var preset = Model.fanPreset(name)
+    if (!preset) return
+    if (!hasFanCurve) {
+      curveStatus = "No fan tables on this EC"
       curveStatusTimer.restart()
       return
     }
     if (curveProc.running) return
-    var tcsv = Array.prototype.map.call(temps, function (v) { return parseInt(v, 10) }).join(",")
-    var scsv = Array.prototype.map.call(speeds, function (v) { return parseInt(v, 10) }).join(",")
-    // Prefer the root-owned copy (sudoers NOPASSWD for `apply` only);
-    // fall back to the plugin script (prompts via sudo when run manually).
-    curveProc.command = ["sudo", "-n", curveSysPath, "apply", fan, tcsv, scsv]
+    var t1 = fan1Temps.map(function (v) { return parseInt(v, 10) }).join(",")
+    var s1 = preset.fan1Speeds.join(",")
+    var t2 = fan2Temps.map(function (v) { return parseInt(v, 10) }).join(",")
+    var s2 = preset.fan2Speeds.join(",")
+    // Prefer the root-owned copy (sudoers NOPASSWD for `apply` only).
+    curveProc.command = ["sudo", "-n", curveSysPath, "apply", "both", t1, s1, t2, s2]
     curveProc.running = true
+    _write("fan", "advanced")
   }
 
   function setCoolerBoost(enabled) {

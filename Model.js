@@ -156,3 +156,66 @@ function validCurve(temps, speeds) {
   }
   return true
 }
+
+// One-tap manual fan presets: fixed speed tables (MCC Advanced layout, both
+// fans). Temps are left as the EC has them; only speeds are preset. The last
+// point stays 100% so the EC still maxes out at critical temperature.
+const FAN_PRESETS = {
+  quiet: {
+    label: "Quiet",
+    caption: "Low fixed speeds",
+    fan1Speeds: [0, 25, 35, 45, 55, 65, 100],
+    fan2Speeds: [25, 35, 45, 55, 65, 75, 100]
+  },
+  balanced: {
+    label: "Balanced",
+    caption: "Stock speeds",
+    fan1Speeds: [0, 50, 60, 65, 75, 75, 100],
+    fan2Speeds: [45, 50, 65, 72, 80, 85, 100]
+  },
+  performance: {
+    label: "Performance",
+    caption: "High fixed speeds",
+    fan1Speeds: [30, 55, 70, 85, 100, 100, 100],
+    fan2Speeds: [50, 65, 80, 90, 100, 100, 100]
+  }
+}
+
+function fanPresetNames() {
+  return ["quiet", "balanced", "performance"]
+}
+
+function fanPreset(name) {
+  return FAN_PRESETS.hasOwnProperty(name) ? FAN_PRESETS[name] : null
+}
+
+function fanPresetLabel(name) {
+  var p = fanPreset(name)
+  return p ? p.label : String(name || "—")
+}
+
+function fanPresetCaption(name) {
+  var p = fanPreset(name)
+  return p ? p.caption : ""
+}
+
+function sameSpeeds(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== 7 || b.length !== 7) return false
+  for (var i = 0; i < 7; i++) {
+    if (parseInt(a[i], 10) !== parseInt(b[i], 10)) return false
+  }
+  return true
+}
+
+// Which preset is currently on the EC (speeds match, advanced mode on).
+// Anything else in advanced mode is reported as custom ("").
+function matchingPreset(snapshot) {
+  if (!snapshot || snapshot.fanMode !== "advanced" || !snapshot.hasFanCurve) return ""
+  var names = fanPresetNames()
+  for (var i = 0; i < names.length; i++) {
+    var p = fanPreset(names[i])
+    if (sameSpeeds(snapshot.fan1Speeds, p.fan1Speeds)
+        && sameSpeeds(snapshot.fan2Speeds, p.fan2Speeds)) return names[i]
+  }
+  return ""
+}
