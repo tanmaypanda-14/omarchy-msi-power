@@ -45,6 +45,7 @@ Item {
   property bool hasKbd: false
   // MCC-style fan curves (Advanced tab): 6 temps + 7 speeds per fan.
   property bool hasFanCurve: false
+  property bool hasFan2: false
   property var fan1Temps: []
   property var fan1Speeds: []
   property var fan2Temps: []
@@ -139,6 +140,7 @@ Item {
     hasWebcamBlock = !!snap.hasWebcamBlock
     hasKbd = !!snap.hasKbd
     hasFanCurve = !!snap.hasFanCurve
+    hasFan2 = !!snap.hasFan2
     fan1Temps = Model.clampCurve(snap.fan1Temps, 6, 30, 100, 60)
     fan1Speeds = Model.clampCurve(snap.fan1Speeds, 7, 0, 100, 50)
     fan2Temps = Model.clampCurve(snap.fan2Temps, 6, 30, 100, 60)
@@ -211,10 +213,15 @@ Item {
     if (curveProc.running) return
     var t1 = fan1Temps.map(function (v) { return parseInt(v, 10) }).join(",")
     var s1 = preset.fan1Speeds.join(",")
-    var t2 = fan2Temps.map(function (v) { return parseInt(v, 10) }).join(",")
-    var s2 = preset.fan2Speeds.join(",")
-    // Prefer the root-owned copy (sudoers NOPASSWD for `apply` only).
-    curveProc.command = ["sudo", "-n", curveSysPath, "apply", "both", t1, s1, t2, s2]
+    // Single-fan boards only use the CPU/fan1 table; dual-fan writes both.
+    if (hasFan2) {
+      var t2 = fan2Temps.map(function (v) { return parseInt(v, 10) }).join(",")
+      var s2 = preset.fan2Speeds.join(",")
+      // Prefer the root-owned copy (sudoers NOPASSWD for `apply` only).
+      curveProc.command = ["sudo", "-n", curveSysPath, "apply", "both", t1, s1, t2, s2]
+    } else {
+      curveProc.command = ["sudo", "-n", curveSysPath, "apply", "fan1", t1, s1]
+    }
     curveProc.running = true
     _write("fan", "advanced")
   }

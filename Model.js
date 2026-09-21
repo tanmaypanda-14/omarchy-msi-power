@@ -89,6 +89,7 @@ function defaultSnapshot() {
     hasWebcamBlock: false,
     hasKbd: false,
     hasFanCurve: false,
+    hasFan2: false,
     fan1Temps: [],
     fan1Speeds: [],
     fan2Temps: [],
@@ -209,14 +210,16 @@ function sameSpeeds(a, b) {
 }
 
 // Which preset is currently on the EC (speeds match, advanced mode on).
-// Anything else in advanced mode is reported as custom ("").
+// Anything else in advanced mode is reported as custom (""). Single-fan
+// boards (no GPU fan speed) match on the CPU/fan1 table only.
 function matchingPreset(snapshot) {
   if (!snapshot || snapshot.fanMode !== "advanced" || !snapshot.hasFanCurve) return ""
   var names = fanPresetNames()
   for (var i = 0; i < names.length; i++) {
     var p = fanPreset(names[i])
-    if (sameSpeeds(snapshot.fan1Speeds, p.fan1Speeds)
-        && sameSpeeds(snapshot.fan2Speeds, p.fan2Speeds)) return names[i]
+    if (!sameSpeeds(snapshot.fan1Speeds, p.fan1Speeds)) continue
+    if (snapshot.hasFan2 && !sameSpeeds(snapshot.fan2Speeds, p.fan2Speeds)) continue
+    return names[i]
   }
   return ""
 }

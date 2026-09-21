@@ -11,7 +11,9 @@ Full MControlCenter coverage for MSI laptops plus a system monitor in one
   the EC to Advanced) plus **Advanced** for the current EC curve, and a
   **Cooler Boost** toggle. The active preset is detected from the EC's live
   tables and ticked. On ECs without curve tables the raw EC fan modes
-  (Auto / Silent / Advanced) are shown instead.
+  (Auto / Silent / Advanced) are shown instead. Single-fan boards (no GPU
+  fan speed exposed, e.g. iGPU-only Modern 15) write and match the CPU/fan1
+  table only; dual-fan boards use both tables.
 - **Heat alert**: the bar icon turns red when the CPU or GPU temperature
   reaches `tempAlertAt` (default 80 °C, configurable in the plugin settings)
 - **Sensors**: read-only text rows in the network-panel style — CPU usage, EC

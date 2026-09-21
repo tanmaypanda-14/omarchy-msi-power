@@ -154,6 +154,10 @@ printf '"hasWebcamBlock":%s,' "$(avail "$MEC/webcam_block")"
 printf '"hasKbd":%s,' "$(avail "$LED/brightness")"
 printf '%s,' "$(fanrpm)"
 printf '%s,' "$(fancurve)"
+# hasFan2: dual-fan boards expose the GPU fan speed; single-fan boards
+# (like this iGPU-only Modern 15 — CPU fan only, verified via tachometer
+# + cooler-boost test) leave gpu/ empty. Presets then use fan1 tables only.
+printf '"hasFan2":%s,' "$(avail "$MEC/gpu/realtime_fan_speed")"
 if [ -n "$BAT" ]; then
   printf '"batteryStatus":"%s",' "$(txt "$BAT/status" "")"
   printf '"batteryCapacity":%s,' "$(num "$BAT/capacity" -1)"
