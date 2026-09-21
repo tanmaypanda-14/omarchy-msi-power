@@ -8,10 +8,8 @@
 # no helper daemon, and no root process are ever involved.
 #
 #   msi-set.sh shift comfort
-#   msi-set.sh fan auto
+#   msi-set.sh fan advanced
 #   msi-set.sh cooler 1
-#   msi-set.sh kbd 2
-#   msi-set.sh end 80
 #
 # Exit code reflects whether the write landed; sysfs stays the source of truth
 # (state is re-read on the next poll either way).
@@ -19,8 +17,6 @@
 set -u
 
 MEC=/sys/devices/platform/msi-ec
-LED=/sys/class/leds/msiacpi::kbd_backlight
-PSU=/sys/class/power_supply
 
 # bool <value> — msi-ec booleans are "on"/"off"; accept the wrappers used elsewhere.
 bool() {
@@ -30,11 +26,9 @@ bool() {
     *)             echo off ;;
   esac
 }
-# isint <value> — reject anything that isn't a plain non-negative integer.
-isint() { [[ "$1" =~ ^[0-9]+$ ]]; }
 
 usage() {
-  echo "usage: msi-set.sh <shift|fan|cooler|webcam|block|fnkey|winkey|kbd|end|start> <value>" >&2
+  echo "usage: msi-set.sh <shift|fan|cooler> <value>" >&2
 }
 
 client=${1:-}
@@ -45,13 +39,6 @@ case "$client" in
   shift)  target="$MEC/shift_mode" ;;
   fan)    target="$MEC/fan_mode" ;;
   cooler) target="$MEC/cooler_boost"; value=$(bool "$value") ;;
-  webcam) target="$MEC/webcam";          value=$(bool "$value") ;;
-  block)  target="$MEC/webcam_block";    value=$(bool "$value") ;;
-  fnkey)  target="$MEC/fn_key";  [[ "$value" == left || "$value" == right ]] || value= ;;
-  winkey) target="$MEC/win_key"; [[ "$value" == left || "$value" == right ]] || value= ;;
-  kbd)    target="$LED/brightness"; isint "$value" || value= ;;
-  end)    target="$PSU/BAT1/charge_control_end_threshold";   isint "$value" || value= ;;
-  start)  target="$PSU/BAT1/charge_control_start_threshold"; isint "$value" || value= ;;
   *)
     usage
     exit 2

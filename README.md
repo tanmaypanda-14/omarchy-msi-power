@@ -40,9 +40,9 @@ required and never run. Reverse-engineering the helper
 ([src/helper/msi-ec.cpp][MControlCenter]) shows every setter it exposed is a
 plain `write()` to one sysfs file; this widget does exactly that, in place:
 
-- **Reads** come from sysfs (`/sys/devices/platform/msi-ec/…`, battery,
-  LED). Everything is world-readable, so the widget never needs privileges
-  just to report state, and it polls every `refreshMs` (default 2s).
+- **Reads** come from sysfs (`/sys/devices/platform/msi-ec/…`). Everything is
+  world-readable, so the widget never needs privileges just to report state,
+  and it polls every `refreshMs` (default 2s).
 - **Writes** go straight to the same sysfs attributes the helper used
   (`shift_mode`, `fan_mode`, `cooler_boost`, …). The kernel driver owns them
   as `root:root 0644`, so a one-shot udev setup makes them group-writable:
@@ -104,7 +104,7 @@ ships); no `mcontrolcenter` package is needed anymore. Then add and enable
 the plugin — the grant is applied automatically during `plugin add`:
 
 ```bash
-omarchy plugin add https://github.com/<you>/omarchy-msi-power.git --enable
+omarchy plugin add https://github.com/tanmaypanda-14/omarchy-msi-power.git --enable
 omarchy bar move omarchy.power --section right   # optional, position in right section
 ```
 
@@ -137,12 +137,14 @@ omarchy plugin enable tanmay.msi-power right
 omarchy plugin validate ~/.config/omarchy/plugins/tanmay.msi-power
 ```
 
-Saved edits under `~/.config/omarchy/plugins/` hot-reload. Force a reload with
+Saved edits under `~/.config/omarchy/plugins/` hot-reload the panel, but the
+bar icon only picks up `Panel.qml` changes after a shell restart
+(`omarchy-restart-shell`). Force a plugin rescan with
 `omarchy-shell shell rescanPlugins`.
 
 ## Usage
 
-- **Left-click** the bolt icon — open the panel.
+- **Left-click** the gauge icon — open the panel.
 - **Right-click** — cycle power mode (Super Battery → Balanced → High).
 
 ## Layout

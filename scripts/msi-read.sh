@@ -10,7 +10,6 @@ set -u
 
 MEC=/sys/devices/platform/msi-ec
 PSU=/sys/class/power_supply
-LED=/sys/class/leds/msiacpi::kbd_backlight
 DMI=/sys/class/dmi/id
 # Read-only raw EC register file (ec_sys debugfs io, or the acpi_ec device).
 # Used only for the fan tachometer, which the msi-ec sysfs driver does not
@@ -66,8 +65,6 @@ list() {
   done <<< "$ls"
   printf '[%s]' "${out%,}"
 }
-# led path helpers — backlight lives under /sys/class/leds, not the EC.
-lednum() { if [ -r "$LED/$1" ]; then num "$LED/$1" "${2:-}"; else printf '%s' "${2:-}"; fi; }
 # avail <path> — 1 when the attribute exists, so the panel can tell
 # "hardware doesn't expose this" from "turned off".
 avail() { [ -r "$1" ] && printf 1 || printf 0; }
@@ -121,52 +118,22 @@ fancurve() {
   printf '"fan2Speeds":[%s]' "$(echo $s2 | tr ' ' ',')"
 }
 
-BAT=""
-for b in "$PSU"/BAT*; do
-  if [ -e "$b" ] && [ -r "$b/capacity" ]; then BAT=$b; break; fi
-done
-
 printf '{"present":1,'
 printf '"acOnline":%s,' "$(num "$PSU/ADP1/online" 0)"
 printf '"model":"%s",' "$(txt "$DMI/product_name" "")"
-printf '"firmware":"%s",' "$(txt "$MEC/fw_version" "")"
 printf '"shiftModes":%s,' "$(list "$MEC/available_shift_modes")"
 printf '"shiftMode":"%s",' "$(txt "$MEC/shift_mode" "")"
 printf '"fanModes":%s,' "$(list "$MEC/available_fan_modes")"
 printf '"fanMode":"%s",' "$(txt "$MEC/fan_mode" "")"
 printf '"coolerBoost":%s,' "$(bool "$MEC/cooler_boost" "off")"
 printf '"cpuTemp":%s,' "$(num "$MEC/cpu/realtime_temperature" -1)"
-printf '"cpuFan":%s,' "$(num "$MEC/cpu/realtime_fan_speed" -1)"
-printf '"cpuBasic":%s,' "$(num "$MEC/cpu/basic_fan_speed" -1)"
 printf '"gpuTemp":%s,' "$(num "$MEC/gpu/realtime_temperature" -1)"
 printf '"gpuFan":%s,' "$(num "$MEC/gpu/realtime_fan_speed" -1)"
-printf '"webcam":%s,' "$(bool "$MEC/webcam" "off")"
-printf '"webcamBlock":%s,' "$(bool "$MEC/webcam_block" "off")"
-printf '"fnKey":"%s",' "$(txt "$MEC/fn_key" "")"
-printf '"winKey":"%s",' "$(txt "$MEC/win_key" "")"
-printf '"kbdLevel":%s,' "$(lednum brightness 0)"
-printf '"kbdMax":%s,' "$(lednum max_brightness 3)"
-printf '"hasShift":%s,' "$(avail "$MEC/available_shift_modes")"
-printf '"hasFan":%s,' "$(avail "$MEC/available_fan_modes")"
 printf '"hasCooler":%s,' "$(avail "$MEC/cooler_boost")"
-printf '"hasWebcam":%s,' "$(avail "$MEC/webcam")"
-printf '"hasWebcamBlock":%s,' "$(avail "$MEC/webcam_block")"
-printf '"hasKbd":%s,' "$(avail "$LED/brightness")"
 printf '%s,' "$(fanrpm)"
 printf '%s,' "$(fancurve)"
 # hasFan2: dual-fan boards expose the GPU fan speed; single-fan boards
 # (like this iGPU-only Modern 15 — CPU fan only, verified via tachometer
 # + cooler-boost test) leave gpu/ empty. Presets then use fan1 tables only.
 printf '"hasFan2":%s,' "$(avail "$MEC/gpu/realtime_fan_speed")"
-if [ -n "$BAT" ]; then
-  printf '"batteryStatus":"%s",' "$(txt "$BAT/status" "")"
-  printf '"batteryCapacity":%s,' "$(num "$BAT/capacity" -1)"
-  printf '"batteryStart":%s,' "$(num "$BAT/charge_control_start_threshold" -1)"
-  printf '"batteryEnd":%s,' "$(num "$BAT/charge_control_end_threshold" -1)"
-else
-  printf '"batteryStatus":"",'
-  printf '"batteryCapacity":-1,'
-  printf '"batteryStart":-1,'
-  printf '"batteryEnd":-1,'
-fi
 printf '"isMsiEc":1}\n'

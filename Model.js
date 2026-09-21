@@ -14,13 +14,6 @@ const FAN_LABELS = {
   advanced: "Advanced"
 }
 
-const KBD_LABELS = {
-  0: "Off",
-  1: "Low",
-  2: "Med",
-  3: "High"
-}
-
 function name(map, value) {
   return map.hasOwnProperty(value) ? map[value] : String(value || "—")
 }
@@ -31,10 +24,6 @@ function shiftModeName(mode) {
 
 function fanModeName(mode) {
   return name(FAN_LABELS, mode)
-}
-
-function kbdName(level) {
-  return name(KBD_LABELS, level)
 }
 
 // Modes the EC actually reports, in EC order, so the panel never shows a
@@ -63,41 +52,23 @@ function defaultSnapshot() {
     present: false,
     acOnline: false,
     model: "",
-    firmware: "",
     shiftModes: [],
     shiftMode: "",
     fanModes: [],
     fanMode: "",
     coolerBoost: false,
     cpuTemp: -1,
-    cpuFan: -1,
     cpuFanRpm: 0,
     hasFanRpm: false,
-    cpuBasic: -1,
     gpuTemp: -1,
     gpuFan: -1,
-    webcam: false,
-    webcamBlock: false,
-    fnKey: "",
-    winKey: "",
-    kbdLevel: 0,
-    kbdMax: 3,
-    hasShift: false,
-    hasFan: false,
     hasCooler: false,
-    hasWebcam: false,
-    hasWebcamBlock: false,
-    hasKbd: false,
     hasFanCurve: false,
     hasFan2: false,
     fan1Temps: [],
     fan1Speeds: [],
     fan2Temps: [],
     fan2Speeds: [],
-    batteryStatus: "",
-    batteryCapacity: -1,
-    batteryStart: -1,
-    batteryEnd: -1,
     isMsiEc: false
   }
 }
@@ -140,22 +111,6 @@ function clampCurve(list, count, min, max, fallback) {
     out.push(isNaN(v) ? fallback : Math.max(min, Math.min(max, v)))
   }
   return out
-}
-
-function validCurve(temps, speeds) {
-  if (!Array.isArray(temps) || temps.length !== 6) return false
-  if (!Array.isArray(speeds) || speeds.length !== 7) return false
-  var prev = -1
-  for (var i = 0; i < 6; i++) {
-    var t = parseInt(temps[i], 10)
-    if (isNaN(t) || t < 30 || t > 100 || t <= prev) return false
-    prev = t
-  }
-  for (var j = 0; j < 7; j++) {
-    var s = parseInt(speeds[j], 10)
-    if (isNaN(s) || s < 0 || s > 100) return false
-  }
-  return true
 }
 
 // One-tap manual fan presets: fixed speed tables (MCC Advanced layout, both
