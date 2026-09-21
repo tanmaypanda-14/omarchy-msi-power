@@ -180,7 +180,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: ""
+    text: "󰓅"
     foreground: root.barIconColor
     tooltipText: "MSI Power Control"
     onPressed: function (buttonCode) {
@@ -243,7 +243,7 @@ Panel {
             iconComponent: Component {
               Text {
                 textFormat: Text.PlainText
-                text: ""
+                text: "󰓅"
                 color: msi.coolerBoost ? root.urgent : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.display

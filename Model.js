@@ -158,19 +158,20 @@ function validCurve(temps, speeds) {
 }
 
 // One-tap manual fan presets: fixed speed tables (MCC Advanced layout, both
-// fans). Temps are left as the EC has them; only speeds are preset. The last
-// point stays 100% so the EC still maxes out at critical temperature.
+// fans). Temps are left as the EC has them; only speeds are preset. Speeds
+// never drop below 25% (no fan-off point) and the last point stays 100% so
+// the EC still maxes out at critical temperature.
 const FAN_PRESETS = {
   quiet: {
     label: "Quiet",
     caption: "Low fixed speeds",
-    fan1Speeds: [0, 25, 35, 45, 55, 65, 100],
+    fan1Speeds: [25, 25, 35, 45, 55, 65, 100],
     fan2Speeds: [25, 35, 45, 55, 65, 75, 100]
   },
   balanced: {
     label: "Balanced",
     caption: "Stock speeds",
-    fan1Speeds: [0, 50, 60, 65, 75, 75, 100],
+    fan1Speeds: [25, 50, 60, 65, 75, 75, 100],
     fan2Speeds: [45, 50, 65, 72, 80, 85, 100]
   },
   performance: {
