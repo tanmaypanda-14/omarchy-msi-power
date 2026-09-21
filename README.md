@@ -6,6 +6,12 @@ Full MControlCenter coverage for MSI laptops plus a system monitor in one
 - **Power mode** (user scenario): Super Battery / Balanced / High Performance
   (`eco` / `comfort` / `sport` on the EC)
 - **Fan** profile (Auto / Silent / Advanced) and **Cooler Boost** toggle
+- **Fan curve** (MControlCenter-style Advanced tab): when the EC keeps curve
+  tables, a FAN CURVE section appears with 6 temp + 7 speed points per fan —
+  same registers MControlCenter edits (`0x6A/0x72/0x82/0x8A`), written through
+  the validated `scripts/msi-fan-curve.sh` (root-scoped via sudoers, like
+  MControlCenter's root helper). Active in Advanced fan mode; the EC keeps
+  curves across reboots.
 - **Heat alert**: the bar icon turns red when the CPU or GPU temperature
   reaches `tempAlertAt` (default 80 °C, configurable in the plugin settings)
 - **Sensors**: read-only text rows in the network-panel style — CPU usage, EC
@@ -46,13 +52,10 @@ plain `write()` to one sysfs file; this widget does exactly that, in place:
   systemd-tmpfiles — so the widget can watch the tach but cannot poke other
   EC registers.
 
-> **Features the EC doesn't support**: MControlCenter's "fan configurations"
-> (custom fan curves) and **USB Power Share** (charging USB devices while the
-> laptop is off) target the older GE/GP/GF gaming ECs — the former writes
-> legacy curve registers (`0x72`/`0x6a`/`0x8a`/`0x82`), the latter a raw EC
-> bit the `msi-ec` driver doesn't export for this Gen-2 EC. This Modern 15's
-> EC exposes neither (`fan_mode` is `auto/silent/advanced` only), so those
-> controls are not shown — they'd be no-ops here anyway.
+> **Features the EC doesn't support**: **USB Power Share** (charging USB
+> devices while the laptop is off) targets the older GE/GP/GF gaming ECs —
+> a raw EC bit the `msi-ec` driver doesn't export for this Gen-2 EC. That
+> control is not shown — it'd be a no-op here.
 
 It depends only on:
 
@@ -152,12 +155,15 @@ MSI Power/
 │   └── omarchy-msi-stats  # CPU/RAM/storage sampler (bundled, polled by Panel)
 ├── scripts/
 │   ├── msi-read.sh     # one-line JSON snapshot of the EC state (reads)
-│   └── msi-set.sh      # apply a setting by writing the sysfs attribute directly
+│   ├── msi-set.sh      # apply a setting by writing the sysfs attribute directly
+│   └── msi-fan-curve.sh # MCC-style fan-curve read/apply (raw EC, root for apply)
 └── setup/
-    ├── 90-msi-ec.rules              # udev rule: sysfs group-writable + raw-EC read grant
-    ├── grant-msi-ec-access.sh       # one-shot root grant (group + rules + apply)
-    ├── msi-ec-tmpfiles.conf         # boot perms: debugfs traversal + io read-only (0640)
-    └── modules-load.conf            # preload msi_ec + ec_sys at boot
+     ├── 90-msi-ec.rules              # udev rule: sysfs group-writable + raw-EC read grant
+     ├── grant-msi-ec-access.sh       # one-shot root grant (group + rules + apply)
+     ├── msi-ec-tmpfiles.conf         # boot perms: debugfs traversal + io read-only (0640)
+     ├── ec-sys-write.conf            # modprobe: ec_sys write_support=1 (root curve writes)
+     ├── msi-fan-curve.sudoers        # sudoers: msi-ec group NOPASSWD for curve `apply` only
+     └── modules-load.conf            # preload msi_ec + ec_sys at boot
 ```
 
 ## Uninstall

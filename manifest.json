@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "tanmay.msi-power",
   "name": "MSI Power",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Tanmay",
   "license": "MIT",
   "description": "MSI laptop control plus a system monitor in one bar widget: power modes, fan control and cooler boost, live CPU/EC sensors, CPU usage, RAM and storage — built on the msi-ec kernel driver, fully standalone (no MControlCenter).",

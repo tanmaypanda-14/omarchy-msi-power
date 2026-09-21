@@ -32,6 +32,8 @@ echo "==> removing boot-time driver and grant configs"
 rm -f /etc/modules-load.d/msi-ec.conf
 rm -f /etc/tmpfiles.d/msi-ec.conf
 rm -f /etc/modprobe.d/msi-ec.conf
+rm -f /etc/sudoers.d/omarchy-msi-fan-curve
+rm -f /usr/local/bin/omarchy-msi-fan-curve
 
 echo "==> reloading udev and resetting the EC/peripheral permissions"
 udevadm control --reload-rules

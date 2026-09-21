@@ -95,6 +95,32 @@ fanrpm() {
   fi
 }
 
+# fancurve — MControlCenter-style curve tables (operate.cpp): fan1 temps
+# 0x6A x6, speeds 0x72 x7; fan2 temps 0x82 x6, speeds 0x8A x7. Read-only;
+# sanity-checked (speeds 0-100, temps 20-110) so EC revisions without MCC
+# tables report hasFanCurve 0 and the panel hides the editor.
+fancurve() {
+  [ -n "$ECIO" ] || { printf '"hasFanCurve":0'; return; }
+  local t1 s1 t2 s2 v
+  t1=$(dd if="$ECIO" bs=1 skip=106 count=6 2>/dev/null | od -An -tu1)
+  s1=$(dd if="$ECIO" bs=1 skip=114 count=7 2>/dev/null | od -An -tu1)
+  t2=$(dd if="$ECIO" bs=1 skip=130 count=6 2>/dev/null | od -An -tu1)
+  s2=$(dd if="$ECIO" bs=1 skip=138 count=7 2>/dev/null | od -An -tu1)
+  for v in $s1 $s2; do
+    case "$v" in ''|*[!0-9]*) printf '"hasFanCurve":0'; return;; esac
+    [ "$v" -le 100 ] || { printf '"hasFanCurve":0'; return; }
+  done
+  for v in $t1 $t2; do
+    case "$v" in ''|*[!0-9]*) printf '"hasFanCurve":0'; return;; esac
+    [ "$v" -ge 20 ] && [ "$v" -le 110 ] || { printf '"hasFanCurve":0'; return; }
+  done
+  printf '"hasFanCurve":1,'
+  printf '"fan1Temps":[%s],' "$(echo $t1 | tr ' ' ',')"
+  printf '"fan1Speeds":[%s],' "$(echo $s1 | tr ' ' ',')"
+  printf '"fan2Temps":[%s],' "$(echo $t2 | tr ' ' ',')"
+  printf '"fan2Speeds":[%s]' "$(echo $s2 | tr ' ' ',')"
+}
+
 BAT=""
 for b in "$PSU"/BAT*; do
   if [ -e "$b" ] && [ -r "$b/capacity" ]; then BAT=$b; break; fi
@@ -127,6 +153,7 @@ printf '"hasWebcam":%s,' "$(avail "$MEC/webcam")"
 printf '"hasWebcamBlock":%s,' "$(avail "$MEC/webcam_block")"
 printf '"hasKbd":%s,' "$(avail "$LED/brightness")"
 printf '%s,' "$(fanrpm)"
+printf '%s,' "$(fancurve)"
 if [ -n "$BAT" ]; then
   printf '"batteryStatus":"%s",' "$(txt "$BAT/status" "")"
   printf '"batteryCapacity":%s,' "$(num "$BAT/capacity" -1)"

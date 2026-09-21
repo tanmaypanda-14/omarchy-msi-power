@@ -1,0 +1,7 @@
+# tanmay.msi-power — let the msi-ec group apply MCC-style fan curves
+# without a password, but ONLY through the validated curve script
+# (range-checked, limited to the 26 curve bytes at 0x6A/0x72/0x82/0x8A —
+# the same writes MControlCenter's root D-Bus helper performs).
+# Installed to /etc/sudoers.d/ by setup/grant-msi-ec-access.sh.
+# Validate with: visudo -c
+%msi-ec ALL=(root) NOPASSWD: /usr/local/bin/omarchy-msi-fan-curve apply *

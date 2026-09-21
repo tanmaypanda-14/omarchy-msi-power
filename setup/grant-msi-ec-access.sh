@@ -34,16 +34,23 @@ install -m 0644 "$dir/90-msi-ec.rules" /etc/udev/rules.d/90-msi-ec.rules
 echo "==> enabling the msi-ec driver and the raw EC interface"
 # The DKMS package does not auto-load msi_ec at boot, so it is preloaded via
 # modules-load.d. The udev rule then re-applies the group perms whenever the
-# platform device appears — no daemon needed. ec_sys provides the read-only
-# debugfs file used for the fan tachometer.
+# platform device appears — no daemon needed. ec_sys provides the debugfs
+# file used for the fan tachometer (read-only for the group) and for the
+# MCC-style fan-curve writes (root only, via the scoped curve script —
+# hence write_support=1 in the modprobe conf).
 install -D -m 0644 "$dir/modules-load.conf" /etc/modules-load.d/msi-ec.conf
 install -D -m 0644 "$dir/msi-ec-tmpfiles.conf" /etc/tmpfiles.d/msi-ec.conf
-# Drop the outdated write_support=1 modprobe option left by the earlier USB
-# power-share grant: ec_sys is loaded with write_support=0 and the group has
-# READ-ONLY access only.
-rm -f /etc/modprobe.d/msi-ec.conf
+install -D -m 0644 "$dir/ec-sys-write.conf" /etc/modprobe.d/msi-ec.conf
 modprobe msi_ec 2>/dev/null || true
-modprobe ec_sys 2>/dev/null || true
+modprobe ec_sys write_support=1 2>/dev/null || modprobe ec_sys 2>/dev/null || true
+
+echo "==> installing the MCC-style fan-curve writer (root-owned, sudo-scoped)"
+# Mirrors MControlCenter's root helper, narrowed to the 26 validated curve
+# bytes: the widget calls it via `sudo -n ... apply ...` (no password —
+# sudoers entry below allows exactly that command for the msi-ec group).
+install -m 0755 "$dir/../scripts/msi-fan-curve.sh" /usr/local/bin/omarchy-msi-fan-curve
+install -m 0440 "$dir/msi-fan-curve.sudoers" /etc/sudoers.d/omarchy-msi-fan-curve
+if command -v visudo >/dev/null 2>&1; then visudo -c 2>/dev/null || true; fi
 
 echo "==> reloading udev rules and re-triggering the MSI devices"
 udevadm control --reload-rules

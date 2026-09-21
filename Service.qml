@@ -43,6 +43,13 @@ Item {
   property bool hasWebcam: false
   property bool hasWebcamBlock: false
   property bool hasKbd: false
+  // MCC-style fan curves (Advanced tab): 6 temps + 7 speeds per fan.
+  property bool hasFanCurve: false
+  property var fan1Temps: []
+  property var fan1Speeds: []
+  property var fan2Temps: []
+  property var fan2Speeds: []
+  property string curveStatus: ""
   property string batteryStatus: ""
   property int batteryCapacity: -1
   property int batteryStart: -1
@@ -73,6 +80,11 @@ Item {
     ? pluginDir + "/scripts/msi-set.sh" : ""
   readonly property string readScript: pluginDir !== ""
     ? pluginDir + "/scripts/msi-read.sh" : ""
+  // MCC-style curve writer: root-owned copy installed by setup (sudoers
+  // scoped to `apply` only), with the plugin script as fallback.
+  readonly property string curveSysPath: "/usr/local/bin/omarchy-msi-fan-curve"
+  readonly property string curveScript: pluginDir !== ""
+    ? pluginDir + "/scripts/msi-fan-curve.sh" : ""
 
   property var _queued: null
   property string _lastAutoTarget: ""
@@ -126,6 +138,11 @@ Item {
     hasWebcam = !!snap.hasWebcam
     hasWebcamBlock = !!snap.hasWebcamBlock
     hasKbd = !!snap.hasKbd
+    hasFanCurve = !!snap.hasFanCurve
+    fan1Temps = Model.clampCurve(snap.fan1Temps, 6, 30, 100, 60)
+    fan1Speeds = Model.clampCurve(snap.fan1Speeds, 7, 0, 100, 50)
+    fan2Temps = Model.clampCurve(snap.fan2Temps, 6, 30, 100, 60)
+    fan2Speeds = Model.clampCurve(snap.fan2Speeds, 7, 0, 100, 50)
     batteryStatus = snap.batteryStatus
     batteryCapacity = Model.clampInt(snap.batteryCapacity, -1, 100, -1)
     batteryStart = Model.clampInt(snap.batteryStart, -1, 100, -1)
@@ -177,6 +194,25 @@ Item {
   function setFanMode(mode) {
     if (Model.supportedFanModes(msi).indexOf(mode) < 0) return
     _write("fan", mode)
+  }
+
+  // MCC Advanced tab: write one fan's curve through the validated
+  // root-scoped curve script (raw EC, like MCC's root helper), then
+  // re-read the EC so the panel shows what actually landed.
+  function applyFanCurve(fan, temps, speeds) {
+    if (fan !== "fan1" && fan !== "fan2") return
+    if (!Model.validCurve(temps, speeds)) {
+      curveStatus = "Invalid curve: 6 rising temps (30-100°C) + 7 speeds (0-100%)"
+      curveStatusTimer.restart()
+      return
+    }
+    if (curveProc.running) return
+    var tcsv = Array.prototype.map.call(temps, function (v) { return parseInt(v, 10) }).join(",")
+    var scsv = Array.prototype.map.call(speeds, function (v) { return parseInt(v, 10) }).join(",")
+    // Prefer the root-owned copy (sudoers NOPASSWD for `apply` only);
+    // fall back to the plugin script (prompts via sudo when run manually).
+    curveProc.command = ["sudo", "-n", curveSysPath, "apply", fan, tcsv, scsv]
+    curveProc.running = true
   }
 
   function setCoolerBoost(enabled) {
@@ -259,6 +295,36 @@ Item {
       }
       msi._maybeNext()
     }
+  }
+
+  // Privileged MCC-style curve writer (sudo -n: fails fast without a tty;
+  // the grant installs the NOPASSWD rule so the widget never prompts).
+  Process {
+    id: curveProc
+    stderr: StdioCollector { id: curveErr; waitForEnd: true }
+    stdout: StdioCollector { id: curveOut; waitForEnd: true }
+    onExited: function (exitCode) {
+      if (exitCode !== 0) {
+        var detail = Model.elideError(curveErr.text || "")
+        if (detail.indexOf("no password was provided") >= 0 || detail.indexOf("a password is required") >= 0)
+          msi.curveStatus = "Curve writes need the sudo grant — re-run setup/install.sh (sudo)"
+        else if (detail !== "")
+          msi.curveStatus = detail
+        else
+          msi.curveStatus = "Curve write failed"
+        curveStatusTimer.restart()
+      } else {
+        msi.curveStatus = ""
+      }
+      msi.refresh()
+    }
+  }
+
+  Timer {
+    id: curveStatusTimer
+    interval: 4000
+    repeat: false
+    onTriggered: msi.curveStatus = ""
   }
 
   Timer {

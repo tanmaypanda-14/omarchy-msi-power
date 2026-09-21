@@ -88,6 +88,11 @@ function defaultSnapshot() {
     hasWebcam: false,
     hasWebcamBlock: false,
     hasKbd: false,
+    hasFanCurve: false,
+    fan1Temps: [],
+    fan1Speeds: [],
+    fan2Temps: [],
+    fan2Speeds: [],
     batteryStatus: "",
     batteryCapacity: -1,
     batteryStart: -1,
@@ -123,4 +128,31 @@ function clampInt(value, min, max, fallback) {
   var v = parseInt(value, 10)
   if (isNaN(v)) return fallback
   return Math.max(min, Math.min(max, v))
+}
+
+// Fan-curve helpers (MControlCenter Advanced tab: 6 temps + 7 speeds / fan).
+function clampCurve(list, count, min, max, fallback) {
+  var src = Array.isArray(list) ? list : []
+  var out = []
+  for (var i = 0; i < count; i++) {
+    var v = parseInt(src[i], 10)
+    out.push(isNaN(v) ? fallback : Math.max(min, Math.min(max, v)))
+  }
+  return out
+}
+
+function validCurve(temps, speeds) {
+  if (!Array.isArray(temps) || temps.length !== 6) return false
+  if (!Array.isArray(speeds) || speeds.length !== 7) return false
+  var prev = -1
+  for (var i = 0; i < 6; i++) {
+    var t = parseInt(temps[i], 10)
+    if (isNaN(t) || t < 30 || t > 100 || t <= prev) return false
+    prev = t
+  }
+  for (var j = 0; j < 7; j++) {
+    var s = parseInt(speeds[j], 10)
+    if (isNaN(s) || s < 0 || s > 100) return false
+  }
+  return true
 }
