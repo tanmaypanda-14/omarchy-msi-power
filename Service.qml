@@ -38,6 +38,13 @@ Item {
   property var fan2Speeds: []
   property string curveStatus: ""
 
+  // Last applied preset, restored on startup (MCC loadSettings parity —
+  // the EC drops mode + tables on cold boot).
+  property string savedPreset: ""
+  property string _pendingPreset: ""
+  property bool _restoreDone: false
+  property bool _stateLoaded: false
+
   property string actionStatus: ""
   property string lastError: ""
   property bool parseFailed: false
@@ -61,6 +68,8 @@ Item {
   // Curve writer: root-owned copy installed by setup (sudoers scoped to
   // `apply` only).
   readonly property string curveSysPath: "/usr/local/bin/omarchy-msi-fan-curve"
+  readonly property string stateScript: pluginDir !== ""
+    ? pluginDir + "/scripts/msi-preset-state.sh" : ""
 
   property var _queued: null
   property string _lastAutoTarget: ""
@@ -109,6 +118,19 @@ Item {
 
     if (!present) { present = true; return }
     followAutoPower(snap.shiftMode, snap.acOnline)
+    maybeRestore()
+  }
+
+  // One-shot restore of the last preset after (re)start: if the EC already
+  // matches, there is nothing to do; otherwise re-apply it. Runs off the
+  // regular poll snapshots, so it also waits out driver load at login.
+  function maybeRestore() {
+    if (_restoreDone || !_stateLoaded) return
+    if (savedPreset === "") { _restoreDone = true; return }
+    if (!hasFanCurve) return
+    if (Model.matchingPreset(msi) === savedPreset) { _restoreDone = true; return }
+    _restoreDone = true
+    applyFanPreset(savedPreset)
   }
 
   function followAutoPower(snapshotShiftMode, snapshotAcOnline) {
@@ -167,6 +189,7 @@ Item {
       return
     }
     if (curveProc.running) return
+    _pendingPreset = name
     var t1 = fan1Temps.map(function (v) { return parseInt(v, 10) }).join(",")
     var s1 = preset.fan1Speeds.join(",")
     // Single-fan boards only use the CPU/fan1 table; dual-fan writes both.
@@ -190,6 +213,15 @@ Item {
     if (autoPower) return
     var next = Model.nextShiftMode(msi, delta)
     if (next !== "") setShiftMode(next)
+  }
+
+  Component.onCompleted: {
+    if (stateScript !== "") {
+      stateProc.command = [stateScript, "get"]
+      stateProc.running = true
+    } else {
+      _restoreDone = true
+    }
   }
 
   Timer {
@@ -245,9 +277,31 @@ Item {
         curveStatusTimer.restart()
       } else {
         msi.curveStatus = ""
+        // Remember the choice so the next login restores it (cold boot
+        // wipes the EC tables). Runs as the user, no privileges needed.
+        if (msi._pendingPreset !== "" && msi.stateScript !== "") {
+          stateSaveProc.command = [msi.stateScript, "set", msi._pendingPreset]
+          stateSaveProc.running = true
+        }
       }
+      msi._pendingPreset = ""
       msi.refresh()
     }
+  }
+
+  // Saved-preset load (startup) and save (after each successful apply).
+  Process {
+    id: stateProc
+    stdout: StdioCollector { id: stateOut; waitForEnd: true }
+    onExited: function (exitCode) {
+      if (exitCode === 0) msi.savedPreset = Model.elideError(stateOut.text || "")
+      msi._stateLoaded = true
+      msi.maybeRestore()
+    }
+  }
+
+  Process {
+    id: stateSaveProc
   }
 
   Timer {

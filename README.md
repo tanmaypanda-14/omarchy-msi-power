@@ -9,7 +9,10 @@ Full MControlCenter coverage for MSI laptops plus a system monitor in one
   speed tables via the MControlCenter Advanced registers
   `0x6A/0x72/0x82/0x8A`, applied with `scripts/msi-fan-curve.sh`, auto-flips
   the EC to Advanced) and a **Cooler Boost** toggle. The active preset is
-  detected from the EC's live tables and ticked. On ECs without curve tables
+  detected from the EC's live tables and ticked. The choice is remembered
+  (`scripts/msi-preset-state.sh`) and re-applied on login, because the EC
+  drops mode + tables on cold boot (same reason MControlCenter restores
+  settings at startup). On ECs without curve tables
   the raw EC fan modes (Auto / Silent / Advanced) are shown instead. Single-fan
   boards (no GPU fan speed exposed, e.g. iGPU-only Modern 15) write and match
   the CPU/fan1 table only; dual-fan boards use both tables.
@@ -159,7 +162,8 @@ MSI Power/
 ├── scripts/
 │   ├── msi-read.sh     # one-line JSON snapshot of the EC state (reads)
 │   ├── msi-set.sh      # apply a setting by writing the sysfs attribute directly
-│   └── msi-fan-curve.sh # MCC-style fan-curve read/apply (raw EC, root for apply)
+│   ├── msi-fan-curve.sh # MCC-style fan-curve read/apply (raw EC, root for apply)
+│   └── msi-preset-state.sh # remember last fan preset across reboots (get/set)
 └── setup/
      ├── 90-msi-ec.rules              # udev rule: sysfs group-writable + raw-EC read grant
      ├── grant-msi-ec-access.sh       # one-shot root grant (group + rules + apply)
