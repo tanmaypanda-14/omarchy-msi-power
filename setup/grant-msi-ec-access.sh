@@ -44,6 +44,7 @@ usermod -a -G msi-ec "$target"
 # single-sourced.
 legacy=(
   /etc/udev/rules.d/90-msi-ec.rules
+  /etc/udev/rules.d/99-msi-ec-permissions.rules
   /etc/modprobe.d/msi-ec.conf
   /etc/modules-load.d/msi-ec.conf
   /etc/tmpfiles.d/msi-ec.conf

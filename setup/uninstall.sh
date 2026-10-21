@@ -37,7 +37,8 @@ fi
 echo "==> removing this plugin's unit and rule"
 systemctl disable --now msi-power-perms.service 2>/dev/null || true
 rm -f /etc/systemd/system/msi-power-perms.service
-rm -f /etc/udev/rules.d/90-msi-power.rules /etc/udev/rules.d/90-msi-ec.rules
+rm -f /etc/udev/rules.d/90-msi-power.rules /etc/udev/rules.d/90-msi-ec.rules \
+      /etc/udev/rules.d/99-msi-ec-permissions.rules
 
 echo "==> removing this plugin's driver/grant configs"
 rm -f /etc/modules-load.d/msi-power.conf /etc/modules-load.d/msi-ec.conf
