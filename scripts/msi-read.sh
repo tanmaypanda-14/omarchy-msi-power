@@ -1,7 +1,9 @@
 #!/bin/bash
 # Read-only snapshot of the MSI EC state, mirroring the msi-center app's
 # dashboard: CPU temperature, fan speed and level, battery and charge limit,
-# power/fan modes, keyboard backlight, Fn/Win swap, webcam block.
+# power/fan modes, keyboard backlight, Fn/Win swap, webcam block. Also reports
+# host-level read-only stats shown next to the EC sensors: average CPU clock,
+# GPU clock and RAM usage.
 #
 # Every value comes from sysfs, which is world-readable, so reporting needs
 # no privileges. Output is one line of JSON; when msi-ec is absent the whole
@@ -105,6 +107,53 @@ fanrpm() {
   fi
 }
 
+# cpuclock — average current clock of the online CPUs, in MHz (-1 when the
+# kernel exposes no cpufreq policy). scaling_cur_freq is in kHz.
+cpuclock() {
+  local f v sum=0 n=0
+  for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq; do
+    [ -r "$f" ] || continue
+    v=$(<"$f") || continue
+    v=${v%%[!0-9]*}
+    [ -n "$v" ] || continue
+    sum=$((sum + v))
+    n=$((n + 1))
+  done
+  if [ "$n" -gt 0 ]; then printf '%d' $((sum / n / 1000)); else printf '%d' -1; fi
+}
+
+# gpuclock — amdgpu's hwmon freq1_input is in Hz; report the first GPU that
+# exposes a clock (-1 when there is none, e.g. NVIDIA-only machines).
+gpuclock() {
+  local f v
+  for f in /sys/class/drm/card*/device/hwmon/hwmon*/freq1_input; do
+    [ -r "$f" ] || continue
+    v=$(<"$f") || continue
+    v=${v%%[!0-9]*}
+    [ -n "$v" ] && { printf '%d' $((v / 1000000)); return; }
+  done
+  printf '%d' -1
+}
+
+# ramusage — used = MemTotal - MemAvailable, the same number `free` reports.
+# Values are in kB; both are -1 when /proc/meminfo cannot be read.
+ramusage() {
+  local key val total=-1 avail=-1
+  if [ -r /proc/meminfo ]; then
+    while read -r key val _; do
+      case "$key" in
+        MemTotal:)     total=$val ;;
+        MemAvailable:) avail=$val ;;
+      esac
+    done < /proc/meminfo
+  fi
+  if [ "$total" -gt 0 ] && [ "$avail" -ge 0 ]; then
+    printf '"ramUsedKb":%d,"ramTotalKb":%d' $((total - avail)) "$total"
+  else
+    printf '"ramUsedKb":-1,"ramTotalKb":-1'
+  fi
+}
+
 printf '{"present":1,'
 printf '"model":"%s",' "$(jsonstr "$(txt "$DMI/product_name" "")")"
 printf '"ecFirmware":"%s",' "$(jsonstr "$(txt "$MEC/fw_version" "")")"
@@ -123,6 +172,8 @@ printf '"kbdMax":%s,' "$(num "$KBD/max_brightness" 0)"
 printf '"webcamBlocked":%s,' "$(bool "$MEC/webcam_block" off)"
 printf '"fnSwap":%s,' "$([ "$(txt "$MEC/win_key" "")" = "left" ] && printf 1 || printf 0)"
 printf '%s,' "$(fanrpm)"
+printf '"cpuMhz":%s,"gpuMhz":%s,' "$(cpuclock)" "$(gpuclock)"
+printf '%s,' "$(ramusage)"
 printf '"hasCooler":%s,' "$(avail "$MEC/cooler_boost")"
 printf '"hasWebcam":%s,' "$(avail "$MEC/webcam_block")"
 printf '"hasFnSwap":%s,' "$(avail "$MEC/win_key")"

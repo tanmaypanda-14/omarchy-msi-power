@@ -7,10 +7,11 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// MSI Center summary in the bar: the same four sensor cards and the same
-// seven settings as the desktop app, nothing else.
+// MSI Center summary in the bar: the EC sensors and the same seven settings
+// as the desktop app, plus read-only CPU/GPU clocks and memory.
 //
-//   Sensors  CPU temperature, fan speed (RPM), fan level, battery + AC
+//   Sensors  CPU temperature, CPU and GPU clock, memory, fan speed (RPM),
+//            fan level, AC state
 //   Settings power mode, fan mode, cooler boost, charge limit,
 //            keyboard backlight, Fn/Win swap, webcam block
 //
@@ -42,6 +43,8 @@ Panel {
   // Same fixed threshold the app's temperature tint uses; not a setting.
   readonly property int tempHotAt: 85
   readonly property bool tempHot: msi.hasCpuSensor && msi.cpuTemp >= tempHotAt
+  readonly property bool hasSensors: msi.hasCpuSensor || msi.hasCpuClock
+    || msi.hasGpuClock || msi.hasRam || msi.hasFanRpm || msi.fanLevel >= 0
   readonly property color barIconColor: !msi.present
     ? Qt.darker(barForeground, 1.55)
     : ((msi.coolerBoost || root.tempHot) ? urgent : barForeground)
@@ -251,7 +254,7 @@ Panel {
 
           // ------------------------------------------------------- SENSORS
           Column {
-            visible: msi.hasCpuSensor || msi.hasFanRpm || msi.hasBattery
+            visible: root.hasSensors
             width: parent.width
             spacing: Style.space(10)
 
@@ -276,6 +279,27 @@ Panel {
               }
 
               StatCard {
+                visible: msi.hasCpuClock
+                Layout.fillWidth: true
+                label: "CPU CLOCK"
+                value: Model.fmtClock(msi.cpuMhz)
+              }
+
+              StatCard {
+                visible: msi.hasGpuClock
+                Layout.fillWidth: true
+                label: "GPU CLOCK"
+                value: Model.fmtClock(msi.gpuMhz)
+              }
+
+              StatCard {
+                visible: msi.hasRam
+                Layout.fillWidth: true
+                label: "MEMORY"
+                value: Model.fmtMemory(msi.ramUsedKb, msi.ramTotalKb)
+              }
+
+              StatCard {
                 visible: msi.hasFanRpm
                 Layout.fillWidth: true
                 label: "FAN SPEED"
@@ -287,13 +311,6 @@ Panel {
                 Layout.fillWidth: true
                 label: "FAN LEVEL"
                 value: root.fmtPercent(msi.fanLevel)
-              }
-
-              StatCard {
-                visible: msi.hasBattery
-                Layout.fillWidth: true
-                label: "BATTERY"
-                value: root.fmtPercent(msi.battery)
               }
             }
 
@@ -323,7 +340,7 @@ Panel {
           }
 
           PanelSeparator {
-            visible: (msi.hasCpuSensor || msi.hasBattery) && shiftModes.length > 0
+            visible: root.hasSensors && shiftModes.length > 0
             foreground: root.foreground
           }
 

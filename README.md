@@ -1,18 +1,22 @@
 # MSI Center — bar summary
 
 The [msi-center](https://github.com/tanmaypanda-14/msi-center-rust) app as a
-single bar pill: the same four sensors and the same seven settings, nothing
-else. Every hardware interaction is the same sysfs write the desktop app
-makes — no raw EC writes, no fan-curve editor, no root helper, no daemon.
+single bar pill: the EC sensors and the same seven settings, plus read-only
+CPU/GPU clocks and memory. Every hardware interaction is the same sysfs write
+the desktop app makes — no raw EC writes, no fan-curve editor, no root helper,
+no daemon.
 
 ## What it shows
 
 | Sensor | Source |
 |---|---|
 | CPU temperature | `msi-ec/cpu/realtime_temperature` |
+| CPU clock | average of `cpu*/cpufreq/scaling_cur_freq` |
+| GPU clock | `amdgpu` hwmon `freq1_input` |
+| Memory | `/proc/meminfo` (`MemTotal - MemAvailable`) |
 | Fan speed (RPM) | `0xCC/0xCD` ticks, `480000 / ticks` (same as the app) |
 | Fan level | `msi-ec/cpu/realtime_fan_speed` |
-| Battery + AC | `BAT1/capacity`, `ADP1/online` |
+| AC state | `ADP1/online` |
 
 ## What it controls
 
@@ -26,8 +30,9 @@ makes — no raw EC writes, no fan-curve editor, no root helper, no daemon.
 | Swap Fn / Win | `msi-ec/win_key` | left / right |
 | Block webcam | `msi-ec/webcam_block` | on / off |
 
-This is the full feature set of the app. GPU, CPU usage, RAM, disks and the
-MControlCenter fan-curve tables were removed: the app does not have them.
+The EC readings and every setting match the app. CPU/GPU clocks and memory are
+read-only host stats the app does not show; disk usage and the MControlCenter
+fan-curve tables are still absent.
 
 ## Permissions
 

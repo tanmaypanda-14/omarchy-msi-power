@@ -99,6 +99,10 @@ function defaultSnapshot() {
     fanMode: "",
     coolerBoost: false,
     cpuTemp: -1,
+    cpuMhz: -1,
+    gpuMhz: -1,
+    ramUsedKb: -1,
+    ramTotalKb: -1,
     fanRpm: 0,
     hasFanRpm: false,
     fanLevel: -1,
@@ -139,6 +143,23 @@ function clampInt(value, min, max, fallback) {
 
 function elideError(str) {
   return String(str || "").replace(/\s+/g, " ").trim()
+}
+
+// "3.39 GHz" / "800 MHz"; em dash when the kernel exposes no clock.
+function fmtClock(mhz) {
+  var n = Number(mhz)
+  if (!isFinite(n) || n < 0) return "—"
+  return n >= 1000 ? (n / 1000).toFixed(2) + " GHz" : Math.round(n) + " MHz"
+}
+
+// "38% · 5.9 / 15.0 GB", matching the old standalone widget.
+function fmtMemory(usedKb, totalKb) {
+  var u = Number(usedKb)
+  var t = Number(totalKb)
+  if (!isFinite(u) || !isFinite(t) || u < 0 || t <= 0) return "—"
+  var gb = 1048576
+  return Math.round(u / t * 100) + "% · "
+    + (u / gb).toFixed(1) + " / " + (t / gb).toFixed(1) + " GB"
 }
 
 function kbdLabel(snapshot) {

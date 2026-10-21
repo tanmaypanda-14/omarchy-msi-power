@@ -26,6 +26,10 @@ Item {
   property string fanMode: ""
   property bool coolerBoost: false
   property int cpuTemp: -1
+  property int cpuMhz: -1
+  property int gpuMhz: -1
+  property int ramUsedKb: -1
+  property int ramTotalKb: -1
   property int fanRpm: 0
   property bool hasFanRpm: false
   property int fanLevel: -1
@@ -45,6 +49,9 @@ Item {
   property bool parseFailed: false
 
   readonly property bool hasCpuSensor: cpuTemp >= 0
+  readonly property bool hasCpuClock: cpuMhz >= 0
+  readonly property bool hasGpuClock: gpuMhz >= 0
+  readonly property bool hasRam: ramTotalKb > 0
   readonly property bool hasBattery: battery >= 0
 
   readonly property int refreshMs: {
@@ -90,6 +97,10 @@ Item {
     fanMode = snap.fanMode
     coolerBoost = snap.coolerBoost
     cpuTemp = Model.clampInt(snap.cpuTemp, -1, 120, -1)
+    cpuMhz = Model.clampInt(snap.cpuMhz, -1, 20000, -1)
+    gpuMhz = Model.clampInt(snap.gpuMhz, -1, 20000, -1)
+    ramUsedKb = Model.clampInt(snap.ramUsedKb, -1, 1073741824, -1)
+    ramTotalKb = Model.clampInt(snap.ramTotalKb, -1, 1073741824, -1)
     fanRpm = Model.clampInt(snap.fanRpm, 0, 15000, 0)
     hasFanRpm = !!snap.hasFanRpm
     fanLevel = Model.clampInt(snap.fanLevel, -1, 100, -1)
