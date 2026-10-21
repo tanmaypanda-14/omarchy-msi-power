@@ -1,0 +1,15 @@
+[Unit]
+Description=Read-only raw EC access for the msi-ec group (tanmay.msi-power)
+# debugfs must be mounted and ec_sys must have created ec0/io. At boot these
+# can happen in either order, so wait for both before applying the grant.
+After=sys-kernel-debug.mount systemd-modules-load.service
+ConditionPathExists=/sys/kernel/debug/ec/ec0/io
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemd-tmpfiles --create /etc/tmpfiles.d/msi-power.conf
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target

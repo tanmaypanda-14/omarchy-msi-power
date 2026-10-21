@@ -33,24 +33,29 @@ MControlCenter fan-curve tables were removed: the app does not have them.
 
 The `msi-ec` group gets write access to **exactly seven files** — the five
 `msi-ec` attributes above, the battery threshold and the keyboard LED. The
-raw EC image is `0640 root:msi-ec`, readable only for the tachometer.
+raw EC image is `0640 root:msi-ec`, readable only for the tachometer; the
+debugfs directories are `0710`, so the group can traverse to the image but
+cannot list debugfs.
 
-The simplest setup is the msi-center package, which installs the same udev
-rule system-wide:
-
-```sh
-sudo pacman -U msi-center-0.2.3-1-x86_64.pkg.tar.zst
-```
-
-Standalone (no package), run the bundled setup once:
+**Single source.** The msi-center package ships the udev rule, the tmpfiles
+entry, the module-load list, the `ec_sys` modprobe hook and the
+`msi-ec-perms.service` unit. If the package is installed, run the bundled
+setup — it detects the package, uses its integration and removes any old
+per-plugin duplicates:
 
 ```sh
 sudo setup/grant-msi-ec-access.sh
 # log out and back in so your session joins the msi-ec group
 ```
 
+The grant is re-applied automatically after every boot and after any
+`modprobe -r ec_sys; modprobe ec_sys` cycle, so nothing has to be re-run
+manually. Standalone (no package), the same command installs the plugin's
+own copies under distinct `msi-power` names.
+
 `setup/install.sh` and `setup/uninstall.sh` are the lifecycle hooks used by
-`omarchy plugin add/remove`.
+`omarchy plugin add/remove`. Uninstalling the widget leaves the app's
+integration alone when msi-center is installed.
 
 ## Install
 
