@@ -75,7 +75,7 @@ the widget in `~/.config/omarchy/plugins/tanmay.msi-power`; use
 If the app is already set up, install just the widget:
 
 ```sh
-omarchy plugin add tanmay.msi-power
+omarchy plugin add https://github.com/tanmaypanda-14/omarchy-msi-power.git --enable
 ```
 
 or symlink/copy this directory to
