@@ -110,6 +110,7 @@ mec=/sys/devices/platform/msi-ec
 bat=/sys/class/power_supply/BAT1
 kbd=/sys/class/leds/msiacpi::kbd_backlight
 if [ -d "$mec" ]; then
+  chgrp -R root "$mec" 2>/dev/null || true
   chmod -R g-w "$mec" 2>/dev/null || true
   for f in shift_mode fan_mode cooler_boost webcam_block win_key; do
     [ -e "$mec/$f" ] || continue
@@ -118,6 +119,7 @@ if [ -d "$mec" ]; then
   done
 fi
 if [ -d "$bat" ]; then
+  chgrp -R root "$bat" 2>/dev/null || true
   chmod -R g-w "$bat" 2>/dev/null || true
   if [ -e "$bat/charge_control_end_threshold" ]; then
     chgrp msi-ec "$bat/charge_control_end_threshold" 2>/dev/null || true
