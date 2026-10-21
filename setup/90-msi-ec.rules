@@ -1,30 +1,30 @@
-# Make the MSI EC sysfs attributes writable by the `msi-ec` group so the
-# tanmay.msi-power bar widget can control the board directly. This replaces
-# the root D-Bus helper that MControlCenter installs — the helper itself is
-# only a thin write() wrapper (src/helper/msi-ec.cpp in its upstream repo),
-# and no longer needs to run.
+# Give the `msi-ec` group write access to exactly the attributes msi-center
+# uses. This is the same rule the msi-center package installs, kept here so
+# the widget also works on a machine without that package.
 #
-# Installed by tanmay.msi-power/setup/grant-msi-ec-access.sh. Applied on
-# device add, so the perms survive re-plug/reboot without any daemon.
-#   - the whole platform ms-ec tree (shift/fan modes, cooler boost, webcam,
-#     fn/win keys, sensors)
-#   - the keyboard backlight LED brightness
-#   - the BAT1 charge control thresholds
-ACTION=="add", SUBSYSTEM=="platform", KERNEL=="msi-ec", \
-  RUN+="/bin/chown -R root:msi-ec /sys/devices/platform/msi-ec", \
-  RUN+="/bin/chmod -R g+w /sys/devices/platform/msi-ec"
+# The group gets write access to seven files and nothing else. The raw EC
+# image stays read-only (see msi-ec-tmpfiles.conf).
 
-# The fan tachometer lives on the raw EC interface (debugfs), which udev
-# cannot see directly. When the msi-ec platform device appears the module is
-# surely loaded, so apply the group's READ-ONLY debugfs permissions right
-# then — no daemon, no race with systemd-tmpfiles.
-ACTION=="add", SUBSYSTEM=="platform", KERNEL=="msi-ec", \
-  RUN+="/usr/lib/systemd/systemd-tmpfiles --create /etc/tmpfiles.d/msi-ec.conf"
+# Shift mode, fan mode, cooler boost, webcam block, Fn/Win swap.
+ACTION=="add|change", SUBSYSTEM=="platform", KERNEL=="msi-ec", \
+  RUN+="/bin/chgrp -R msi-ec /sys/devices/platform/msi-ec", \
+  RUN+="/bin/chmod -R g-w /sys/devices/platform/msi-ec", \
+  RUN+="/bin/chmod g+w /sys/devices/platform/msi-ec/shift_mode /sys/devices/platform/msi-ec/fan_mode /sys/devices/platform/msi-ec/cooler_boost /sys/devices/platform/msi-ec/webcam_block /sys/devices/platform/msi-ec/win_key"
 
-ACTION=="add", SUBSYSTEM=="leds", KERNEL=="msiacpi::kbd_backlight", \
-  RUN+="/bin/chown root:msi-ec /sys/class/leds/msiacpi::kbd_backlight/brightness", \
+# The fan tachometer lives in debugfs, which udev cannot see. The module
+# being loaded means the platform device exists, so apply the read-only
+# tmpfiles permissions at the same moment and fix the boot ordering.
+ACTION=="add|change", SUBSYSTEM=="platform", KERNEL=="msi-ec", \
+  RUN+="/usr/bin/systemd-tmpfiles --create /etc/tmpfiles.d/msi-ec.conf"
+
+# Battery charge limit. %S%p is the real sysfs directory: BAT1 in /sys/class
+# is a symlink and chgrp -R does not dereference a command-line symlink.
+ACTION=="add|change", SUBSYSTEM=="power_supply", KERNEL=="BAT1", \
+  RUN+="/bin/chgrp -R msi-ec /sys%p", \
+  RUN+="/bin/chmod -R g-w /sys%p", \
+  RUN+="/bin/chmod g+w /sys%p/charge_control_end_threshold"
+
+# Keyboard backlight.
+ACTION=="add|change", SUBSYSTEM=="leds", KERNEL=="msiacpi::kbd_backlight", \
+  RUN+="/bin/chgrp msi-ec /sys/class/leds/msiacpi::kbd_backlight/brightness", \
   RUN+="/bin/chmod g+w /sys/class/leds/msiacpi::kbd_backlight/brightness"
-
-ACTION=="add", SUBSYSTEM=="power_supply", KERNEL=="BAT1", \
-  RUN+="/bin/chown -R root:msi-ec /sys/class/power_supply/BAT1", \
-  RUN+="/bin/chmod -R g+w /sys/class/power_supply/BAT1"

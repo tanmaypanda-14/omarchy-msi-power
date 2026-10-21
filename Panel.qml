@@ -7,10 +7,15 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// MSI Power + system monitor: one bar pill. The EC snapshot (power modes,
-// fan, cooler boost, EC sensors) comes from the msi service; live system
-// stats (CPU usage, RAM, storage) are sampled by bin/omarchy-msi-stats.
-// Sensors are laid out as plain label/value rows, matching the network panel.
+// MSI Center summary in the bar: the same four sensor cards and the same
+// seven settings as the desktop app, nothing else.
+//
+//   Sensors  CPU temperature, fan speed (RPM), fan level, battery + AC
+//   Settings power mode, fan mode, cooler boost, charge limit,
+//            keyboard backlight, Fn/Win swap, webcam block
+//
+// Every write is the same sysfs write msi-center makes. No raw EC writes,
+// no fan-curve editor, no root helper.
 Panel {
   id: root
   moduleName: "tanmay.msi-power"
@@ -23,7 +28,6 @@ Panel {
     var home = Quickshell.env("HOME") || ""
     return home !== "" ? home + "/.config/omarchy/plugins/tanmay.msi-power" : ""
   }
-  readonly property string statsScript: String(Qt.resolvedUrl("bin/omarchy-msi-stats")).replace("file://", "")
 
   property int cursorIndex: 0
   property bool cursorActive: false
@@ -33,37 +37,30 @@ Panel {
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color warn: Qt.lighter(urgent, 1.35)
   readonly property color dim: Qt.darker(foreground, 1.55)
+  readonly property color accent: Color.accent
+  readonly property color ok: Color.ok !== undefined ? Color.ok : accent
+  // Same fixed threshold the app's temperature tint uses; not a setting.
+  readonly property int tempHotAt: 85
+  readonly property bool tempHot: msi.hasCpuSensor && msi.cpuTemp >= tempHotAt
   readonly property color barIconColor: !msi.present
     ? Qt.darker(barForeground, 1.55)
     : ((msi.coolerBoost || root.tempHot) ? urgent : barForeground)
-  readonly property int tempAlertAt: Number(setting("tempAlertAt", 80)) || 80
-  readonly property bool tempHot: (msi.hasCpuSensor && msi.cpuTemp >= tempAlertAt)
-    || (msi.hasGpuSensor && msi.gpuTemp >= tempAlertAt)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property var shiftModes: Model.supportedShiftModes(msi)
   readonly property var fanModes: Model.supportedFanModes(msi)
-
-  // --------------------------------------------------------------- system
-  property var stats: ({})
-  readonly property bool hasData: stats && stats.cpu !== undefined
-  readonly property var cpuStat: hasData ? stats.cpu : null
-  readonly property var memStat: hasData ? stats.mem : null
-  readonly property var disksStat: hasData ? stats.disks || [] : []
+  readonly property var batteryLimits: Model.batteryLimits()
 
   // Every focusable row in order, so j/k never land on a hidden control.
-  // With fan tables on the EC the fan list is the 3 manual presets plus
-  // Advanced; without them it is the raw EC fan modes.
   readonly property var cursorRows: {
     var rows = []
     for (var i = 0; i < shiftModes.length; i++) rows.push("shift:" + shiftModes[i])
-    if (msi.hasFanCurve) {
-      var presets = Model.fanPresetNames()
-      for (var p = 0; p < presets.length; p++) rows.push("preset:" + presets[p])
-    } else {
-      for (var j = 0; j < fanModes.length; j++) rows.push("fan:" + fanModes[j])
-    }
+    for (var j = 0; j < fanModes.length; j++) rows.push("fan:" + fanModes[j])
     if (msi.hasCooler) rows.push("cooler")
+    for (var b = 0; b < batteryLimits.length; b++) rows.push("battery:" + batteryLimits[b].limit)
+    if (msi.hasKbd) rows.push("kbd")
+    if (msi.hasFnSwap) rows.push("fnswap")
+    if (msi.hasWebcam) rows.push("webcam")
     return rows
   }
 
@@ -91,33 +88,29 @@ Panel {
   function activateCursor() {
     var name = cursorRow
     if (name.indexOf("shift:") === 0) msi.setShiftMode(name.substring(6))
-    else if (name.indexOf("preset:") === 0) msi.applyFanPreset(name.substring(7))
     else if (name.indexOf("fan:") === 0) msi.setFanMode(name.substring(4))
+    else if (name.indexOf("battery:") === 0) msi.setBatteryLimit(parseInt(name.substring(8), 10))
     else if (name === "cooler") msi.setCoolerBoost(!msi.coolerBoost)
+    else if (name === "kbd") msi.cycleKeyboard()
+    else if (name === "fnswap") msi.toggleFnSwap()
+    else if (name === "webcam") msi.toggleWebcam()
   }
 
   function fmtPercent(p) {
-    return (p === null || p === undefined || isNaN(Number(p))) ? "—" : Math.round(Number(p)) + "%"
-  }
-
-  function fmtBytes(b) {
-    var n = Number(b || 0)
-    if (n >= 1073741824) return (n / 1073741824).toFixed(1) + " GiB"
-    if (n >= 1048576) return (n / 1048576).toFixed(0) + " MiB"
-    if (n >= 1024) return (n / 1024).toFixed(0) + " KiB"
-    return Math.round(n) + " B"
+    return (p === null || p === undefined || isNaN(Number(p)) || Number(p) < 0)
+      ? "—" : Math.round(Number(p)) + "%"
   }
 
   function tempColor(t, warnAt, critAt) {
-    if (t === null || t === undefined) return root.foreground
+    if (t === null || t === undefined || Number(t) < 0) return root.foreground
     var n = Number(t)
     if (n >= critAt) return root.urgent
     if (n >= warnAt) return root.warn
     return root.foreground
   }
 
-  function refreshStats() {
-    if (!statsProc.running) statsProc.running = true
+  function fanDisplay() {
+    return msi.fanMode !== "" ? Model.fanModeName(msi.fanMode) : "—"
   }
 
   visible: msi.present || !hideWhenUnsupported
@@ -129,7 +122,6 @@ Panel {
     cursorIndex = 0
     if (panelFlick) panelFlick.contentY = 0
     msi.refresh()
-    refreshStats()
     Qt.callLater(function () { keyCatcher.forceActiveFocus() })
   }
 
@@ -139,34 +131,12 @@ Panel {
     pluginDir: root.pluginDir
   }
 
-  Timer {
-    interval: 2500
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: root.refreshStats()
-  }
-
-  Process {
-    id: statsProc
-    command: [root.statsScript]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        try {
-          var parsed = JSON.parse(String(text || ""))
-          if (parsed && typeof parsed === "object") root.stats = parsed
-        } catch (e) { /* keep last good snapshot */ }
-      }
-    }
-  }
-
   IpcHandler {
     target: root.ipcTarget
     function open(): void { root.open() }
     function close(): void { root.close() }
     function toggle(): void { root.toggle() }
-    function refresh(): string { msi.refresh(); root.refreshStats(); return "ok" }
+    function refresh(): string { msi.refresh(); return "ok" }
     function cycleShift(): string { msi.cycleShift(1); return "ok" }
     function status(): string {
       return msi.present
@@ -181,7 +151,7 @@ Panel {
     bar: root.bar
     text: "󰓅"
     foreground: root.barIconColor
-    tooltipText: "MSI Power Control"
+    tooltipText: "MSI Center"
     onPressed: function (buttonCode) {
       if (buttonCode === Qt.RightButton) msi.cycleShift(1)
       else root.toggle()
@@ -196,7 +166,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(400))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(720))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(980))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -210,9 +180,14 @@ Panel {
       onTabRequested: function (direction) { root.switchPanel(direction) }
       onTextKey: function (t) {
         var key = String(t).toLowerCase()
-        if (key === "r") { msi.refresh(); root.refreshStats() }
+        if (key === "r") msi.refresh()
         else if (key === "m") msi.cycleShift(1)
-        else if (key === "f") root.cycleFan()
+        else if (key === "f") {
+          var modes = fanModes
+          if (modes.length === 0) return
+          var at = modes.indexOf(msi.fanMode)
+          msi.setFanMode(modes[(at + 1) % modes.length])
+        }
       }
 
       Flickable {
@@ -229,13 +204,14 @@ Panel {
         Column {
           id: column
           width: panelFlick.width
-          spacing: Style.space(12)
+          spacing: Style.space(9)
 
           PanelHero {
             id: hero
             width: parent.width
             title: msi.model !== "" ? msi.model : "MSI Laptop"
-            detail: msi.shiftMode !== "" ? Model.shiftModeName(msi.shiftMode) : ""
+            detail: msi.present && msi.ecFirmware !== ""
+              ? "EC " + msi.ecFirmware + " · msi-ec" : ""
             foreground: root.foreground
             fontFamily: root.fontFamily
             iconOpacity: msi.present ? 1.0 : 0.5
@@ -273,9 +249,9 @@ Panel {
             horizontalAlignment: Text.AlignHCenter
           }
 
-          // -------------------------------------------------------- SENSORS
+          // ------------------------------------------------------- SENSORS
           Column {
-            visible: msi.hasCpuSensor || msi.hasGpuSensor || root.hasData
+            visible: msi.hasCpuSensor || msi.hasFanRpm || msi.hasBattery
             width: parent.width
             spacing: Style.space(10)
 
@@ -285,104 +261,73 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            Column {
+            GridLayout {
               width: parent.width
-              spacing: Style.spacing.labelGap
+              columns: 2
+              rowSpacing: Style.space(8)
+              columnSpacing: Style.space(8)
 
-              StatRow {
-                label: "CPU"
-                value: root.fmtPercent(root.cpuStat ? root.cpuStat.percent : null)
-                valueColor: root.cpuStat && root.cpuStat.percent >= 85 ? root.urgent : root.foreground
-              }
-
-              StatRow {
+              StatCard {
                 visible: msi.hasCpuSensor
-                label: "CPU temp"
+                Layout.fillWidth: true
+                label: "CPU TEMP"
                 value: msi.cpuTemp >= 0 ? msi.cpuTemp + "°C" : "—"
-                valueColor: root.tempColor(msi.hasCpuSensor ? msi.cpuTemp : null, 75, 85)
+                valueColor: root.tempColor(msi.cpuTemp, 75, 85)
               }
 
-              StatRow {
+              StatCard {
                 visible: msi.hasFanRpm
-                label: "CPU fan"
-                value: msi.cpuFanRpm > 0 ? msi.cpuFanRpm + " rpm" : "OFF"
-                valueColor: msi.hasCooler && msi.cpuFanRpm >= 7000 ? Color.accent : root.foreground
+                Layout.fillWidth: true
+                label: "FAN SPEED"
+                value: msi.fanRpm > 0 ? msi.fanRpm + " rpm" : "OFF"
               }
 
-              StatRow {
-                visible: msi.hasGpuSensor
-                label: "GPU"
-                value: msi.gpuTemp >= 0 ? msi.gpuTemp + "°C" + (msi.gpuFan >= 0 ? " · " + msi.gpuFan + "%" : "") : "—"
-                valueColor: root.tempColor(msi.hasGpuSensor ? msi.gpuTemp : null, 80, 88)
+              StatCard {
+                visible: msi.fanLevel >= 0
+                Layout.fillWidth: true
+                label: "FAN LEVEL"
+                value: root.fmtPercent(msi.fanLevel)
+              }
+
+              StatCard {
+                visible: msi.hasBattery
+                Layout.fillWidth: true
+                label: "BATTERY"
+                value: root.fmtPercent(msi.battery)
               }
             }
 
-            PanelSeparator {
-              visible: root.hasData
-              foreground: root.foreground
-            }
-
-            Column {
-              visible: root.hasData
+            RowLayout {
+              visible: msi.hasBattery
               width: parent.width
-              spacing: Style.spacing.labelGap
+              spacing: Style.space(6)
 
-              StatRow {
-                label: "Memory"
-                value: root.memStat
-                  ? root.fmtBytes(root.memStat.usedBytes) + " / " + root.fmtBytes(root.memStat.totalBytes)
-                    + " · " + root.fmtPercent(root.memStat.percent)
-                  : "—"
+              Text {
+                textFormat: Text.PlainText
+                Layout.fillWidth: true
+                text: "POWER"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 0.6
               }
 
-              StatRow {
-                visible: root.memStat && root.memStat.swapTotalBytes > 0
-                label: "Swap"
-                value: root.memStat
-                  ? root.fmtBytes(root.memStat.swapUsedBytes) + " / " + root.fmtBytes(root.memStat.swapTotalBytes)
-                    + " · " + root.fmtPercent(root.memStat.swapPercent)
-                  : "—"
-              }
-            }
-
-            PanelSeparator {
-              visible: root.disksStat.length > 0
-              foreground: root.foreground
-            }
-
-            Column {
-              visible: root.disksStat.length > 0
-              width: parent.width
-              spacing: Style.spacing.labelGap
-
-              PanelSectionHeader {
-                text: "STORAGE"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-              }
-
-              Repeater {
-                model: root.disksStat
-
-                StatRow {
-                  required property var modelData
-                  label: modelData.device
-                  value: root.fmtBytes(modelData.usedBytes) + " / " + root.fmtBytes(modelData.totalBytes)
-                    + " · " + root.fmtPercent(modelData.percent)
-                    + (modelData.tempC !== null && modelData.tempC !== undefined
-                       ? " · " + Math.round(modelData.tempC) + "°C" : "")
-                  valueColor: root.tempColor(modelData.tempC, 48, 58)
-                }
+              Text {
+                textFormat: Text.PlainText
+                text: msi.acOnline ? "On AC power" : "On battery"
+                color: msi.acOnline ? root.ok : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
               }
             }
           }
 
           PanelSeparator {
-            visible: (msi.hasCpuSensor || msi.hasGpuSensor || root.hasData) && shiftModes.length > 0
+            visible: (msi.hasCpuSensor || msi.hasBattery) && shiftModes.length > 0
             foreground: root.foreground
           }
 
-          // ------------------------------------------------------ POWER MODE
+          // ----------------------------------------------------- POWER MODE
           Column {
             visible: shiftModes.length > 0
             width: parent.width
@@ -405,7 +350,7 @@ Panel {
                   width: parent.width
                   rowName: "shift:" + modelData
                   text: Model.shiftModeName(modelData)
-                  caption: modeCaption(modelData)
+                  caption: Model.shiftModeCaption(modelData)
                   selected: msi.shiftMode === modelData
                   onClicked: msi.setShiftMode(modelData)
                 }
@@ -418,10 +363,7 @@ Panel {
             foreground: root.foreground
           }
 
-          // ----------------------------------------------------------- FAN
-          // With fan tables on the EC: 3 one-tap manual presets (fixed
-          // speeds via the MCC Advanced tables, auto-enables Advanced).
-          // Without tables: the raw EC fan modes.
+          // --------------------------------------------------------- FAN
           Column {
             visible: fanModes.length > 0 || msi.hasCooler
             width: parent.width
@@ -433,19 +375,8 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            Text {
-              textFormat: Text.PlainText
-              visible: msi.curveStatus !== ""
-              width: parent.width
-              text: msi.curveStatus
-              color: root.urgent
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.WordWrap
-            }
-
             Column {
-              visible: !msi.hasFanCurve && fanModes.length > 0
+              visible: fanModes.length > 0
               width: parent.width
               spacing: Style.space(6)
 
@@ -456,28 +387,9 @@ Panel {
                   width: parent.width
                   rowName: "fan:" + modelData
                   text: Model.fanModeName(modelData)
-                  caption: ""
+                  caption: Model.fanModeCaption(modelData)
                   selected: msi.fanMode === modelData
                   onClicked: msi.setFanMode(modelData)
-                }
-              }
-            }
-
-            Column {
-              visible: msi.hasFanCurve
-              width: parent.width
-              spacing: Style.space(6)
-
-              Repeater {
-                model: Model.fanPresetNames()
-                ModeRow {
-                  required property var modelData
-                  width: parent.width
-                  rowName: "preset:" + modelData
-                  text: Model.fanPresetLabel(modelData)
-                  caption: Model.fanPresetCaption(modelData)
-                  selected: Model.matchingPreset(msi) === modelData
-                  onClicked: msi.applyFanPreset(modelData)
                 }
               }
             }
@@ -487,53 +399,106 @@ Panel {
               width: parent.width
               rowName: "cooler"
               label: "Cooler Boost"
-              caption: "Max out all fans"
+              caption: "Runs the fan at maximum"
               checked: msi.coolerBoost
               onToggled: msi.setCoolerBoost(!msi.coolerBoost)
+            }
+          }
+
+          PanelSeparator {
+            visible: msi.hasBattery && msi.batteryLimit > 0
+            foreground: root.foreground
+          }
+
+          // ------------------------------------------------------ BATTERY
+          Column {
+            visible: msi.hasBattery && msi.batteryLimit > 0
+            width: parent.width
+            spacing: Style.space(10)
+
+            PanelSectionHeader {
+              text: "CHARGE LIMIT"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            RowLayout {
+              width: parent.width
+              spacing: Style.space(6)
+
+              Repeater {
+                model: root.batteryLimits
+
+                LimitChip {
+                  required property var modelData
+                  Layout.fillWidth: true
+                  limit: modelData.limit
+                  label: modelData.label
+                }
+              }
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: "Lower limits extend battery life when the laptop stays plugged in."
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+          }
+
+          PanelSeparator {
+            visible: msi.hasKbd || msi.hasFnSwap || msi.hasWebcam
+            foreground: root.foreground
+          }
+
+          // ------------------------------------------------------- SYSTEM
+          Column {
+            visible: msi.hasKbd || msi.hasFnSwap || msi.hasWebcam
+            width: parent.width
+            spacing: Style.space(10)
+
+            PanelSectionHeader {
+              text: "SYSTEM"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            ToggleRow {
+              visible: msi.hasKbd
+              width: parent.width
+              rowName: "kbd"
+              label: "Keyboard backlight"
+              caption: Model.kbdLabel(msi)
+              checked: msi.kbdLevel > 0
+              onToggled: msi.cycleKeyboard()
+            }
+
+            ToggleRow {
+              visible: msi.hasFnSwap
+              width: parent.width
+              rowName: "fnswap"
+              label: "Swap Fn / Win keys"
+              caption: Model.fnSwapLabel(msi)
+              checked: msi.fnSwap
+              onToggled: msi.toggleFnSwap()
+            }
+
+            ToggleRow {
+              visible: msi.hasWebcam
+              width: parent.width
+              rowName: "webcam"
+              label: "Block webcam"
+              caption: "EC-level kill switch"
+              checked: msi.webcamBlocked
+              onToggled: msi.toggleWebcam()
             }
           }
         }
       }
     }
-  }
-
-  function modeCaption(mode) {
-    if (mode === "eco") return "Maximizes battery run time"
-    if (mode === "comfort") return "Balanced heat and noise"
-    if (mode === "sport") return "Maximum CPU and GPU power"
-    return ""
-  }
-
-  function nextFan(delta) {
-    var modes = fanModes
-    if (modes.length === 0) return ""
-    var at = modes.indexOf(msi.fanMode)
-    if (at < 0) at = 0
-    return modes[(at + 1) % modes.length]
-  }
-
-  // Keyboard 'f' cycles the same list the FAN section shows.
-  function cycleFan() {
-    if (msi.hasFanCurve) {
-      var presets = Model.fanPresetNames()
-      var match = Model.matchingPreset(msi)
-      var at = presets.indexOf(match)
-      if (msi.fanMode !== "advanced" || at < 0) {
-        msi.applyFanPreset(presets[0])
-        return
-      }
-      if (at + 1 < presets.length) msi.applyFanPreset(presets[at + 1])
-      else msi.applyFanPreset(presets[0])
-      return
-    }
-    var next = nextFan(1)
-    if (next !== "") msi.setFanMode(next)
-  }
-
-  function fanDisplay() {
-    var match = Model.matchingPreset(msi)
-    if (match !== "") return Model.fanPresetLabel(match)
-    return Model.fanModeName(msi.fanMode)
   }
 
   component ModeRow: CursorSurface {
@@ -670,38 +635,87 @@ Panel {
     }
   }
 
-  component StatRow: Item {
-    id: row
+
+  component LimitChip: Rectangle {
+    id: chip
+    property int limit: 0
+    property string label: ""
+    readonly property bool selected: msi.batteryLimit === limit
+    readonly property bool hasCursor: root.rowHasCursor("battery:" + limit)
+
+    radius: Style.space(8)
+    implicitHeight: Style.space(38)
+    color: selected
+      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.16)
+      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
+    border.width: hasCursor ? Style.space(2) : Style.space(1)
+    border.color: hasCursor
+      ? root.foreground
+      : (selected ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.55)
+                  : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10))
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: root.focusRow("battery:" + chip.limit)
+      onClicked: msi.setBatteryLimit(chip.limit)
+    }
+
+    Text {
+      anchors.centerIn: parent
+      textFormat: Text.PlainText
+      text: chip.label
+      color: root.foreground
+      opacity: chip.selected ? 1.0 : 0.8
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.body
+      font.weight: chip.selected ? Font.DemiBold : Font.Normal
+    }
+  }
+
+  component StatCard: Rectangle {
+    id: card
     property string label: ""
     property string value: ""
     property color valueColor: root.foreground
 
-    width: parent ? parent.width : 0
-    implicitHeight: Math.max(labelText.implicitHeight, valueText.implicitHeight)
-    height: implicitHeight
+    radius: Style.space(10)
+    color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
+    border.width: Style.space(1)
+    border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.09)
+    implicitHeight: Style.space(54)
 
-    Text {
-      id: labelText
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      text: row.label
-      color: Qt.darker(root.foreground, 1.35)
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-      elide: Text.ElideRight
-    }
+    ColumnLayout {
+      anchors.fill: parent
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      anchors.topMargin: Style.space(7)
+      anchors.bottomMargin: Style.space(7)
+      spacing: 0
 
-    Text {
-      id: valueText
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      text: row.value
-      color: row.valueColor
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-      width: Math.min(implicitWidth, parent.width - labelText.implicitWidth - Style.space(12))
-      elide: Text.ElideRight
-      horizontalAlignment: Text.AlignRight
+      Text {
+        textFormat: Text.PlainText
+        Layout.fillWidth: true
+        text: card.label
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        font.letterSpacing: 0.6
+        elide: Text.ElideRight
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        Layout.fillWidth: true
+        text: card.value
+        color: card.valueColor
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        font.weight: Font.DemiBold
+        elide: Text.ElideRight
+      }
     }
   }
+
 }

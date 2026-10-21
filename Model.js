@@ -1,11 +1,19 @@
-// Shared state descriptions for the MSI power widget.
+// Shared descriptions for the MSI Center summary widget.
+//
+// Everything here mirrors the msi-center desktop app: same labels, same
+// EC tokens, same value ranges. If the app cannot do it, the widget does
+// not show it.
 
-// Shift modes are the EC's own tokens; the labels mirror MControlCenter's
-// user-scenario names so the widget reads the same way the app does.
 const SHIFT_LABELS = {
   eco: "Super Battery",
   comfort: "Balanced",
   sport: "High Performance"
+}
+
+const SHIFT_CAPTIONS = {
+  eco: "Maximises battery run time",
+  comfort: "Balanced heat and noise",
+  sport: "Maximum CPU and GPU power"
 }
 
 const FAN_LABELS = {
@@ -13,6 +21,20 @@ const FAN_LABELS = {
   silent: "Silent",
   advanced: "Advanced"
 }
+
+const FAN_CAPTIONS = {
+  auto: "EC decides",
+  silent: "Lowest noise",
+  advanced: "Custom curve"
+}
+
+// The three charge limits the app offers. The EC accepts 50-100; these are
+// the useful presets, not an arbitrary range.
+const BATTERY_LIMITS = [
+  { limit: 60, label: "60%", caption: "best longevity" },
+  { limit: 80, label: "80%", caption: "balanced" },
+  { limit: 100, label: "100%", caption: "full capacity" }
+]
 
 function name(map, value) {
   return map.hasOwnProperty(value) ? map[value] : String(value || "—")
@@ -22,12 +44,31 @@ function shiftModeName(mode) {
   return name(SHIFT_LABELS, mode)
 }
 
+function shiftModeCaption(mode) {
+  return name(SHIFT_CAPTIONS, mode)
+}
+
 function fanModeName(mode) {
   return name(FAN_LABELS, mode)
 }
 
-// Modes the EC actually reports, in EC order, so the panel never shows a
-// mode this firmware cannot enter.
+function fanModeCaption(mode) {
+  return name(FAN_CAPTIONS, mode)
+}
+
+function batteryLimits() {
+  return BATTERY_LIMITS
+}
+
+function batteryLimitCaption(limit) {
+  for (var i = 0; i < BATTERY_LIMITS.length; i++) {
+    if (BATTERY_LIMITS[i].limit === limit) return BATTERY_LIMITS[i].caption
+  }
+  return ""
+}
+
+// Only show modes the EC actually reports, so the panel can never offer a
+// mode this firmware rejects.
 function supportedShiftModes(snapshot) {
   var list = Array.isArray(snapshot.shiftModes) ? snapshot.shiftModes : []
   return list.filter(function (m) { return SHIFT_LABELS.hasOwnProperty(m) })
@@ -43,39 +84,39 @@ function nextShiftMode(snapshot, delta) {
   if (modes.length === 0) return ""
   var at = modes.indexOf(snapshot.shiftMode)
   if (at < 0) at = 0
-  var next = (at + delta % modes.length + modes.length) % modes.length
-  return modes[next]
+  return modes[(at + delta % modes.length + modes.length) % modes.length]
 }
 
 function defaultSnapshot() {
   return {
     present: false,
-    acOnline: false,
     model: "",
+    ecFirmware: "",
+    acOnline: false,
     shiftModes: [],
     shiftMode: "",
     fanModes: [],
     fanMode: "",
     coolerBoost: false,
     cpuTemp: -1,
-    cpuFanRpm: 0,
+    fanRpm: 0,
     hasFanRpm: false,
-    gpuTemp: -1,
-    gpuFan: -1,
+    fanLevel: -1,
+    battery: -1,
+    batteryLimit: -1,
+    kbdLevel: -1,
+    kbdMax: 0,
+    webcamBlocked: false,
+    fnSwap: false,
     hasCooler: false,
-    hasFanCurve: false,
-    hasFan2: false,
-    fan1Temps: [],
-    fan1Speeds: [],
-    fan2Temps: [],
-    fan2Speeds: [],
-    isMsiEc: false
+    hasWebcam: false,
+    hasFnSwap: false,
+    hasKbd: false
   }
 }
 
-// The snapshot is a single line of JSON from scripts/msi-read.sh. A line we
-// cannot parse still proves the msi-ec driver exists, so present stays true
-// and the widget stays visible rather than blinking out.
+// One line of JSON from scripts/msi-read.sh. A line we cannot parse still
+// proves the driver exists, so the widget stays visible rather than blinking.
 function parseSnapshot(raw) {
   var next = defaultSnapshot()
   try {
@@ -90,91 +131,26 @@ function parseSnapshot(raw) {
   return next
 }
 
-function elideError(str) {
-  return String(str || "").replace(/\s+/g, " ").trim()
-}
-
-// Percentages clamp for a possible mismatch between what the EC allows and
-// what the panel asked for: the EC re-read after each write is the truth.
 function clampInt(value, min, max, fallback) {
   var v = parseInt(value, 10)
   if (isNaN(v)) return fallback
   return Math.max(min, Math.min(max, v))
 }
 
-// Fan-curve helpers (MControlCenter Advanced tab: 6 temps + 7 speeds / fan).
-function clampCurve(list, count, min, max, fallback) {
-  var src = Array.isArray(list) ? list : []
-  var out = []
-  for (var i = 0; i < count; i++) {
-    var v = parseInt(src[i], 10)
-    out.push(isNaN(v) ? fallback : Math.max(min, Math.min(max, v)))
-  }
-  return out
+function elideError(str) {
+  return String(str || "").replace(/\s+/g, " ").trim()
 }
 
-// One-tap manual fan presets: fixed speed tables (MCC Advanced layout, both
-// fans). Temps are left as the EC has them; only speeds are preset. Speeds
-// never drop below 25% (no fan-off point) and the last point stays 100% so
-// the EC still maxes out at critical temperature.
-const FAN_PRESETS = {
-  quiet: {
-    label: "Quiet",
-    caption: "Low fixed speeds",
-    fan1Speeds: [25, 25, 35, 45, 55, 65, 100],
-    fan2Speeds: [25, 35, 45, 55, 65, 75, 100]
-  },
-  balanced: {
-    label: "Balanced",
-    caption: "Stock speeds",
-    fan1Speeds: [25, 50, 60, 65, 75, 75, 100],
-    fan2Speeds: [45, 50, 65, 72, 80, 85, 100]
-  },
-  performance: {
-    label: "Performance",
-    caption: "High fixed speeds",
-    fan1Speeds: [30, 55, 70, 85, 100, 100, 100],
-    fan2Speeds: [50, 65, 80, 90, 100, 100, 100]
-  }
+function kbdLabel(snapshot) {
+  if (!snapshot.hasKbd || snapshot.kbdMax <= 0) return "not exposed by this EC"
+  return snapshot.kbdLevel > 0
+    ? "Level " + snapshot.kbdLevel + " of " + snapshot.kbdMax
+    : "Off"
 }
 
-function fanPresetNames() {
-  return ["quiet", "balanced", "performance"]
-}
-
-function fanPreset(name) {
-  return FAN_PRESETS.hasOwnProperty(name) ? FAN_PRESETS[name] : null
-}
-
-function fanPresetLabel(name) {
-  var p = fanPreset(name)
-  return p ? p.label : String(name || "—")
-}
-
-function fanPresetCaption(name) {
-  var p = fanPreset(name)
-  return p ? p.caption : ""
-}
-
-function sameSpeeds(a, b) {
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== 7 || b.length !== 7) return false
-  for (var i = 0; i < 7; i++) {
-    if (parseInt(a[i], 10) !== parseInt(b[i], 10)) return false
-  }
-  return true
-}
-
-// Which preset is currently on the EC (speeds match, advanced mode on).
-// Anything else in advanced mode is reported as custom (""). Single-fan
-// boards (no GPU fan speed) match on the CPU/fan1 table only.
-function matchingPreset(snapshot) {
-  if (!snapshot || snapshot.fanMode !== "advanced" || !snapshot.hasFanCurve) return ""
-  var names = fanPresetNames()
-  for (var i = 0; i < names.length; i++) {
-    var p = fanPreset(names[i])
-    if (!sameSpeeds(snapshot.fan1Speeds, p.fan1Speeds)) continue
-    if (snapshot.hasFan2 && !sameSpeeds(snapshot.fan2Speeds, p.fan2Speeds)) continue
-    return names[i]
-  }
-  return ""
+function fnSwapLabel(snapshot) {
+  if (!snapshot.hasFnSwap) return "not exposed by this EC"
+  return snapshot.fnSwap
+    ? "Swapped — Fn right, Win left"
+    : "Standard — Fn left, Win right"
 }

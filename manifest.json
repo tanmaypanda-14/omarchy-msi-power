@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "id": "tanmay.msi-power",
-  "name": "MSI Power",
-  "version": "0.2.0",
+  "name": "MSI Center",
+  "version": "0.3.0",
   "author": "Tanmay",
   "license": "MIT",
-  "description": "MSI laptop control plus a system monitor in one bar widget: power modes, fan control and cooler boost, live CPU/EC sensors, CPU usage, RAM and storage — built on the msi-ec kernel driver, fully standalone (no MControlCenter).",
+  "description": "The msi-center desktop app as a bar summary: CPU temperature, fan speed and level, battery and charge limit, plus the same seven controls — power mode, fan mode, cooler boost, charge limit, keyboard backlight, Fn/Win swap and webcam block. Same sysfs writes as the app, no root helper.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,16 +13,14 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "MSI Power",
-    "description": "MSI laptop control and system monitor. All EC access goes straight to sysfs: reads are world-readable and writes are group-granted by the bundled one-shot udev setup (setup/grant-msi-ec-access.sh). MControlCenter and its root D-Bus helper are not required and never run.",
+    "displayName": "MSI Center",
+    "description": "Summary of the msi-center app. Reads sysfs and writes the same msi-ec attributes the app writes; the udev rule grants the msi-ec group access to exactly those files. No MControlCenter, no helper daemon.",
     "category": "Power",
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
       "hideWhenUnsupported": true,
-      "refreshMs": 2000,
-      "autoPower": false,
-      "tempAlertAt": 80
+      "refreshMs": 2000
     },
     "schema": [
       {
@@ -38,20 +36,6 @@
         "min": 500,
         "max": 15000,
         "defaultValue": 2000
-      },
-      {
-        "key": "autoPower",
-        "type": "boolean",
-        "label": "Auto power mode on power-source change",
-        "defaultValue": false
-      },
-      {
-        "key": "tempAlertAt",
-        "type": "number",
-        "label": "Temp (°C) that turns the bar icon red",
-        "min": 40,
-        "max": 100,
-        "defaultValue": 80
       }
     ]
   }
