@@ -83,7 +83,7 @@ modprobe msi_ec 2>/dev/null || true
 modprobe ec_sys 2>/dev/null || true
 
 echo "==> enabling the permission unit"
-systemctl daemon-reload
+systemctl daemon-reload 2>/dev/null || true
 if [ "$have_pkg" -eq 1 ]; then
   systemctl enable msi-ec-perms.service 2>/dev/null || true
   systemd-tmpfiles --create "$pkg_tmpfiles" 2>/dev/null || true
@@ -95,7 +95,7 @@ else
 fi
 
 echo "==> reloading udev rules and re-triggering the MSI devices"
-udevadm control --reload-rules
+udevadm control --reload-rules 2>/dev/null || true
 for p in /sys/devices/platform/msi-ec \
          /sys/class/leds/msiacpi::kbd_backlight \
          /sys/class/power_supply/BAT1; do
