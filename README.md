@@ -39,9 +39,11 @@ cannot list debugfs.
 
 **Single source.** The msi-center package ships the udev rule, the tmpfiles
 entry, the module-load list, the `ec_sys` modprobe hook and the
-`msi-ec-perms.service` unit. If the package is installed, run the bundled
-setup — it detects the package, uses its integration and removes any old
-per-plugin duplicates:
+`msi-ec-perms.service` unit. The app's
+[curl installer](https://github.com/tanmaypanda-14/msi-center-rust#install)
+does this for you. If the app is already installed, run the bundled setup —
+it detects the package, uses its integration and removes any old per-plugin
+duplicates:
 
 ```sh
 sudo setup/grant-msi-ec-access.sh
@@ -58,6 +60,19 @@ own copies under distinct `msi-power` names.
 integration alone when msi-center is installed.
 
 ## Install
+
+One command installs the app, the matching `msi-ec` DKMS driver, the
+permissions, and this widget (on Omarchy):
+
+```sh
+curl -fsSL https://github.com/tanmaypanda-14/msi-center-rust/releases/latest/download/install.sh | sudo bash
+```
+
+It verifies the release checksums, removes old `/etc` duplicates, and leaves
+the widget in `~/.config/omarchy/plugins/tanmay.msi-power`; use
+`--no-widget` on the app installer if you only want the app.
+
+If the app is already set up, install just the widget:
 
 ```sh
 omarchy plugin add tanmay.msi-power
