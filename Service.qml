@@ -7,9 +7,9 @@ import "Model.js" as Model
 //
 // Reads are a plain sysfs snapshot (scripts/msi-read.sh). Writes are the same
 // sysfs writes the app performs (scripts/msi-set.sh): shift_mode, fan_mode,
-// cooler_boost, webcam_block, win_key, the battery charge limit and the
-// keyboard LED. No raw EC writes and no root helper are involved — the udev
-// rule grants the msi-ec group write access to exactly those attributes.
+// cooler_boost and the battery charge limit. No raw EC writes and no root
+// helper are involved — the udev rule grants the msi-ec group write access to
+// exactly those attributes.
 Item {
   id: msi
   property var settings: ({})
@@ -157,27 +157,6 @@ Item {
     var allowed = [60, 80, 100]
     if (allowed.indexOf(limit) < 0) return
     _write("battery", limit)
-  }
-
-  // Same cycle as the app's System page: 0 → 1 → … → max → 0.
-  function cycleKeyboard() {
-    if (!hasKbd || kbdMax <= 0) {
-      actionStatus = "Keyboard backlight is not exposed by this EC"
-      actionStatusTimer.restart()
-      return
-    }
-    var next = (Math.max(0, kbdLevel) + 1) % (kbdMax + 1)
-    _write("kbd", next)
-  }
-
-  function toggleFnSwap() {
-    if (!hasFnSwap) return
-    _write("fnswap", fnSwap ? "off" : "on")
-  }
-
-  function toggleWebcam() {
-    if (!hasWebcam) return
-    _write("webcam", webcamBlocked ? "off" : "on")
   }
 
   Timer {

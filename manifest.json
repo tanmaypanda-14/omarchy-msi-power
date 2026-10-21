@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "tanmay.msi-power",
   "name": "MSI Center",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": "Tanmay",
   "license": "MIT",
-  "description": "The msi-center desktop app as a bar summary: CPU temperature, CPU/GPU clocks, memory, fan speed and level, charge limit, plus the same seven controls \u2014 power mode, fan mode, cooler boost, charge limit, keyboard backlight, Fn/Win swap and webcam block. Same sysfs writes as the app, no root helper.",
+  "description": "The msi-center desktop app as a bar summary: CPU temperature, CPU/GPU clocks, memory, fan speed and level, charge limit, plus four of its controls \u2014 power mode, fan mode, cooler boost and charge limit. Same sysfs writes as the app, no root helper.",
   "kinds": [
     "bar-widget"
   ],

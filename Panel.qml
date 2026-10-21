@@ -7,13 +7,12 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// MSI Center summary in the bar: the EC sensors and the same seven settings
-// as the desktop app, plus read-only CPU/GPU clocks and memory.
+// MSI Center summary in the bar: the EC sensors and four of the app's
+// settings, plus read-only CPU/GPU clocks and memory.
 //
 //   Sensors  CPU temperature, CPU and GPU clock, memory, fan speed (RPM),
 //            fan level, AC state
-//   Settings power mode, fan mode, cooler boost, charge limit,
-//            keyboard backlight, Fn/Win swap, webcam block
+//   Settings power mode, fan mode, cooler boost, charge limit
 //
 // Every write is the same sysfs write msi-center makes. No raw EC writes,
 // no fan-curve editor, no root helper.
@@ -61,9 +60,6 @@ Panel {
     for (var j = 0; j < fanModes.length; j++) rows.push("fan:" + fanModes[j])
     if (msi.hasCooler) rows.push("cooler")
     for (var b = 0; b < batteryLimits.length; b++) rows.push("battery:" + batteryLimits[b].limit)
-    if (msi.hasKbd) rows.push("kbd")
-    if (msi.hasFnSwap) rows.push("fnswap")
-    if (msi.hasWebcam) rows.push("webcam")
     return rows
   }
 
@@ -94,9 +90,6 @@ Panel {
     else if (name.indexOf("fan:") === 0) msi.setFanMode(name.substring(4))
     else if (name.indexOf("battery:") === 0) msi.setBatteryLimit(parseInt(name.substring(8), 10))
     else if (name === "cooler") msi.setCoolerBoost(!msi.coolerBoost)
-    else if (name === "kbd") msi.cycleKeyboard()
-    else if (name === "fnswap") msi.toggleFnSwap()
-    else if (name === "webcam") msi.toggleWebcam()
   }
 
   function fmtPercent(p) {
@@ -463,54 +456,6 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               wrapMode: Text.WordWrap
-            }
-          }
-
-          PanelSeparator {
-            visible: msi.hasKbd || msi.hasFnSwap || msi.hasWebcam
-            foreground: root.foreground
-          }
-
-          // ------------------------------------------------------- SYSTEM
-          Column {
-            visible: msi.hasKbd || msi.hasFnSwap || msi.hasWebcam
-            width: parent.width
-            spacing: Style.space(10)
-
-            PanelSectionHeader {
-              text: "SYSTEM"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            ToggleRow {
-              visible: msi.hasKbd
-              width: parent.width
-              rowName: "kbd"
-              label: "Keyboard backlight"
-              caption: Model.kbdLabel(msi)
-              checked: msi.kbdLevel > 0
-              onToggled: msi.cycleKeyboard()
-            }
-
-            ToggleRow {
-              visible: msi.hasFnSwap
-              width: parent.width
-              rowName: "fnswap"
-              label: "Swap Fn / Win keys"
-              caption: Model.fnSwapLabel(msi)
-              checked: msi.fnSwap
-              onToggled: msi.toggleFnSwap()
-            }
-
-            ToggleRow {
-              visible: msi.hasWebcam
-              width: parent.width
-              rowName: "webcam"
-              label: "Block webcam"
-              caption: "EC-level kill switch"
-              checked: msi.webcamBlocked
-              onToggled: msi.toggleWebcam()
             }
           }
         }

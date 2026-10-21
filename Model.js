@@ -161,17 +161,3 @@ function fmtMemory(usedKb, totalKb) {
   return Math.round(u / t * 100) + "% · "
     + (u / gb).toFixed(1) + " / " + (t / gb).toFixed(1) + " GB"
 }
-
-function kbdLabel(snapshot) {
-  if (!snapshot.hasKbd || snapshot.kbdMax <= 0) return "not exposed by this EC"
-  return snapshot.kbdLevel > 0
-    ? "Level " + snapshot.kbdLevel + " of " + snapshot.kbdMax
-    : "Off"
-}
-
-function fnSwapLabel(snapshot) {
-  if (!snapshot.hasFnSwap) return "not exposed by this EC"
-  return snapshot.fnSwap
-    ? "Swapped — Fn right, Win left"
-    : "Standard — Fn left, Win right"
-}

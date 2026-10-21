@@ -1,7 +1,7 @@
 # MSI Center — bar summary
 
 The [msi-center](https://github.com/tanmaypanda-14/msi-center-rust) app as a
-single bar pill: the EC sensors and the same seven settings, plus read-only
+single bar pill: the EC sensors and four of the app's settings, plus read-only
 CPU/GPU clocks and memory. Every hardware interaction is the same sysfs write
 the desktop app makes — no raw EC writes, no fan-curve editor, no root helper,
 no daemon.
@@ -26,18 +26,19 @@ no daemon.
 | Fan mode | `msi-ec/fan_mode` | Auto / Silent / Advanced |
 | Cooler Boost | `msi-ec/cooler_boost` | on / off |
 | Charge limit | `BAT1/charge_control_end_threshold` | 60 / 80 / 100 |
-| Keyboard backlight | `LEDs/…::kbd_backlight/brightness` | cycles 0…max |
-| Swap Fn / Win | `msi-ec/win_key` | left / right |
-| Block webcam | `msi-ec/webcam_block` | on / off |
 
-The EC readings and every setting match the app. CPU/GPU clocks and memory are
-read-only host stats the app does not show; disk usage and the MControlCenter
-fan-curve tables are still absent.
+The keyboard backlight, Fn/Win swap and webcam block controls were removed
+from the pill; the desktop app still has them.
+
+The EC readings match the app, and the four controls above are the same sysfs
+writes. CPU/GPU clocks and memory are read-only host stats the app does not
+show; disk usage and the MControlCenter fan-curve tables are still absent.
 
 ## Permissions
 
-The `msi-ec` group gets write access to **exactly seven files** — the five
-`msi-ec` attributes above, the battery threshold and the keyboard LED. The
+The `msi-ec` group gets write access to **exactly seven files** — `shift_mode`,
+`fan_mode`, `cooler_boost`, `webcam_block`, `win_key`, the battery threshold
+and the keyboard LED. The
 raw EC image is `0640 root:msi-ec`, readable only for the tachometer; the
 debugfs directories are `0710`, so the group can traverse to the image but
 cannot list debugfs.
