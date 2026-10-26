@@ -1,10 +1,11 @@
 # MSI Center — bar summary
 
 The [msi-center](https://github.com/tanmaypanda-14/msi-center-rust) app as a
-single bar pill: the EC sensors and four of the app's settings, plus read-only
-CPU/GPU clocks and memory. Every hardware interaction is the same sysfs write
-the desktop app makes — no raw EC writes, no fan-curve editor, no root helper,
-no daemon.
+single bar pill: the EC sensors and five of the app's settings, plus read-only
+CPU/GPU clocks and memory. Every hardware interaction is the same one the
+desktop app makes — plain sysfs for the modes, and the app's setuid
+`msi-fan-helper` for the fixed fan speed (the EC fan curve is the one thing
+`msi-ec` does not export). No daemon.
 
 ## What it shows
 
@@ -25,14 +26,18 @@ no daemon.
 | Power mode | `msi-ec/shift_mode` | Super Battery / Balanced / High Performance |
 | Fan mode | `msi-ec/fan_mode` | Auto / Silent / Advanced |
 | Cooler Boost | `msi-ec/cooler_boost` | on / off |
+| Manual fan speed | `msi-fan-helper` → EC `0x72..0x78` | 20–100 %, or back to the EC curve |
 | Charge limit | `BAT1/charge_control_end_threshold` | 60 / 80 / 100 |
 
 The keyboard backlight, Fn/Win swap and webcam block controls were removed
 from the pill; the desktop app still has them.
 
-The EC readings match the app, and the four controls above are the same sysfs
-writes. CPU/GPU clocks and memory are read-only host stats the app does not
-show; disk usage and the MControlCenter fan-curve tables are still absent.
+The EC readings match the app, and the controls above are the same writes. A
+fixed fan speed pins all seven EC curve points to one value, so the fan holds
+that speed regardless of temperature. Below 100 % the slider shows amber; the
+helper refuses anything under 20 %, where the EC would rather throttle the CPU
+than spin the fan. *Enter* on the slider hands the fan back to the EC curve,
+restoring the table the app archived before the first override.
 
 ## Permissions
 
@@ -42,6 +47,13 @@ and the keyboard LED. The
 raw EC image is `0640 root:msi-ec`, readable only for the tachometer; the
 debugfs directories are `0710`, so the group can traverse to the image but
 cannot list debugfs.
+
+Manual fan speed is deliberately outside that grant. `/usr/bin/msi-fan-helper`
+is setuid root and writes msi-ec's `debug/ec_set` (`0200 root`), which exists
+only when the module is loaded with `debug=1`. It accepts a speed, never an
+address, so the group does not get blanket EC write access. The package
+installs both; `msi-fan-helper check` says whether the path is live. Without
+it the slider is hidden and the rest of the pill works unchanged.
 
 **Single source.** The msi-center package ships the udev rule, the tmpfiles
 entry, the module-load list, the `ec_sys` modprobe hook and the
@@ -93,10 +105,13 @@ or symlink/copy this directory to
 - Right click: cycle power mode
 - `j`/`k`: move the cursor, `Enter`: activate, `r`: refresh, `m`: power mode,
   `f`: fan mode
+- On the manual fan row: drag or click the track, or use `←`/`→` to step by 5 %;
+  `Enter` restores the EC curve
 - IPC: `qs ipc call tanmay.msi-power status|open|close|toggle|refresh|cycleShift`
 
 ## Requirements
 
 - `msi-ec` kernel driver loaded (DKMS)
 - `ec_sys` for RPM only; it can stay read-only (`write_support=0`)
+- `msi-fan-helper` (installed by msi-center) for the manual fan speed
 - Wayland + Quickshell (Omarchy)

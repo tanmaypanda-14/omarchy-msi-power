@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "tanmay.msi-power",
   "name": "MSI Center",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "author": "Tanmay",
   "license": "MIT",
-  "description": "The msi-center desktop app as a bar summary: CPU temperature, CPU/GPU clocks, memory, fan speed and level, charge limit, plus four of its controls \u2014 power mode, fan mode, cooler boost and charge limit. Same sysfs writes as the app, no root helper.",
+  "description": "The msi-center desktop app as a bar summary: CPU temperature, CPU/GPU clocks, memory, fan speed and level, charge limit, plus five of its controls \u2014 power mode, fan mode, cooler boost, manual fan speed and charge limit. Same writes as the app, including its setuid msi-fan-helper for the fan curve.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "MSI Center",
-    "description": "Summary of the msi-center app. Reads sysfs and writes the same msi-ec attributes the app writes; the udev rule grants the msi-ec group access to exactly those files. No MControlCenter, no helper daemon.",
+    "description": "Summary of the msi-center app. Reads sysfs and writes the same msi-ec attributes the app writes; the udev rule grants the msi-ec group access to exactly those files. Manual fan speed goes through msi-center's setuid msi-fan-helper, which can only write the seven EC fan-curve speeds. No MControlCenter, no daemon.",
     "category": "Power",
     "allowMultiple": false,
     "defaultSection": "right",

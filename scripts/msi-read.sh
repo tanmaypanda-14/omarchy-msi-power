@@ -18,8 +18,9 @@ ADP=$PSU/ADP1
 KBD=/sys/class/leds/msiacpi::kbd_backlight
 DMI=/sys/class/dmi/id
 
-# Raw EC image: only used for the fan tachometer, which msi-ec does not
-# export on the installed driver (0.13). Newer builds expose debug/ec_dump.
+# Raw EC image: used for the fan tachometer (msi-ec does not export it on the
+# installed driver, 0.13) and for the fan-curve speed points at 0x72..0x78.
+# Newer builds expose debug/ec_dump, but this file stays the common path.
 ECIO=""
 for cand in /sys/kernel/debug/ec/ec0/io /dev/ec; do
   [ -r "$cand" ] && ECIO=$cand && break
@@ -107,6 +108,48 @@ fanrpm() {
   fi
 }
 
+# fanmanual — is the fan curve currently a flat, manually chosen one?
+#
+# Reads the seven speed points at 0x72..0x78 from the raw EC image (the same
+# read-only image used for the tachometer). "manualFan" is the fixed speed,
+# or -1 when the EC curve is in charge. hasManualFan says whether an override
+# can be written at all: it needs msi-center's setuid helper and the driver's
+# debug/ec_set node (msi-ec loaded with debug=1).
+fanmanual() {
+  local helper="" cand set=$MEC/debug/ec_set
+  local bytes first i flat=1
+  local -a sp
+
+  for cand in /usr/bin/msi-fan-helper /usr/local/bin/msi-fan-helper; do
+    [ -x "$cand" ] && helper=$cand && break
+  done
+
+  if [ -z "$helper" ] || [ ! -e "$set" ] || [ -z "$ECIO" ]; then
+    printf '"manualFan":-1,"hasManualFan":0'
+    return
+  fi
+
+  bytes=$(dd if="$ECIO" bs=1 skip=114 count=7 2>/dev/null | od -An -tu1)
+  read -ra sp <<< "$bytes"
+  if [ "${#sp[@]}" -ne 7 ]; then
+    printf '"manualFan":-1,"hasManualFan":0'
+    return
+  fi
+
+  first=${sp[0]}
+  for i in 1 2 3 4 5 6; do
+    [ "${sp[i]}" -eq "$first" ] || flat=0
+  done
+
+  # The table is only consulted in advanced mode; auto/silent use the EC's own
+  # logic even when the stored points happen to be flat.
+  if [ "$flat" -eq 1 ] && [ "$(txt "$MEC/fan_mode" "")" = "advanced" ]; then
+    printf '"manualFan":%d,"hasManualFan":1' "$first"
+  else
+    printf '"manualFan":-1,"hasManualFan":1'
+  fi
+}
+
 # cpuclock — average current clock of the online CPUs, in MHz (-1 when the
 # kernel exposes no cpufreq policy). scaling_cur_freq is in kHz.
 cpuclock() {
@@ -165,6 +208,7 @@ printf '"fanMode":"%s",' "$(txt "$MEC/fan_mode" "")"
 printf '"coolerBoost":%s,' "$(bool "$MEC/cooler_boost" off)"
 printf '"cpuTemp":%s,' "$(num "$MEC/cpu/realtime_temperature" -1)"
 printf '"fanLevel":%s,' "$(num "$MEC/cpu/realtime_fan_speed" -1)"
+printf '%s,' "$(fanmanual)"
 printf '"battery":%s,' "$(num "$BAT/capacity" -1)"
 printf '"batteryLimit":%s,' "$(num "$BAT/charge_control_end_threshold" -1)"
 printf '"kbdLevel":%s,' "$(num "$KBD/brightness" -1)"

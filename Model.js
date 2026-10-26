@@ -36,6 +36,11 @@ const BATTERY_LIMITS = [
   { limit: 100, label: "100%", caption: "full capacity" }
 ]
 
+// Manual fan speed bounds, matching the desktop app and msi-fan-helper.
+// Below 20% the EC would rather let the CPU throttle than spin the fan.
+const FAN_MANUAL_MIN = 20
+const FAN_MANUAL_MAX = 100
+
 function name(map, value) {
   return map.hasOwnProperty(value) ? map[value] : String(value || "—")
 }
@@ -106,6 +111,8 @@ function defaultSnapshot() {
     fanRpm: 0,
     hasFanRpm: false,
     fanLevel: -1,
+    manualFan: -1,
+    hasManualFan: false,
     battery: -1,
     batteryLimit: -1,
     kbdLevel: -1,
@@ -139,6 +146,24 @@ function clampInt(value, min, max, fallback) {
   var v = parseInt(value, 10)
   if (isNaN(v)) return fallback
   return Math.max(min, Math.min(max, v))
+}
+
+// A setpoint for the manual-fan row: the active override when there is one,
+// otherwise the speed the EC is applying right now, kept inside the bounds.
+function fanSetpoint(snapshot) {
+  var manual = parseInt(snapshot.manualFan, 10)
+  if (isFinite(manual) && manual >= FAN_MANUAL_MIN) return Math.min(FAN_MANUAL_MAX, manual)
+  var level = parseInt(snapshot.fanLevel, 10)
+  if (!isFinite(level) || level < FAN_MANUAL_MIN) return Math.round((FAN_MANUAL_MIN + FAN_MANUAL_MAX) / 2)
+  return Math.min(FAN_MANUAL_MAX, level)
+}
+
+function clampManualFan(value) {
+  return clampInt(value, FAN_MANUAL_MIN, FAN_MANUAL_MAX, -1)
+}
+
+function manualFanRange() {
+  return { min: FAN_MANUAL_MIN, max: FAN_MANUAL_MAX }
 }
 
 function elideError(str) {

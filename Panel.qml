@@ -12,10 +12,12 @@ import "Model.js" as Model
 //
 //   Sensors  CPU temperature, CPU and GPU clock, memory, fan speed (RPM),
 //            fan level, AC state
-//   Settings power mode, fan mode, cooler boost, charge limit
+//   Settings power mode, fan mode, cooler boost, charge limit, manual fan
+//            speed
 //
-// Every write is the same sysfs write msi-center makes. No raw EC writes,
-// no fan-curve editor, no root helper.
+// Every write is the same write msi-center makes: plain sysfs for the modes,
+// and the app's setuid msi-fan-helper for the manual fan speed (the EC curve
+// is the only thing msi-ec does not export). Still no daemon.
 Panel {
   id: root
   moduleName: "tanmay.msi-power"
@@ -59,6 +61,7 @@ Panel {
     for (var i = 0; i < shiftModes.length; i++) rows.push("shift:" + shiftModes[i])
     for (var j = 0; j < fanModes.length; j++) rows.push("fan:" + fanModes[j])
     if (msi.hasCooler) rows.push("cooler")
+    if (msi.hasManualFan) rows.push("fanlevel")
     for (var b = 0; b < batteryLimits.length; b++) rows.push("battery:" + batteryLimits[b].limit)
     return rows
   }
@@ -90,7 +93,15 @@ Panel {
     else if (name.indexOf("fan:") === 0) msi.setFanMode(name.substring(4))
     else if (name.indexOf("battery:") === 0) msi.setBatteryLimit(parseInt(name.substring(8), 10))
     else if (name === "cooler") msi.setCoolerBoost(!msi.coolerBoost)
+    else if (name === "fanlevel") {
+      // Enter pins the shown speed, or hands the fan back to the EC curve.
+      if (msi.manualFan >= 0) msi.restoreFanCurve()
+      else msi.setManualFan(root.fanSetpoint)
+    }
   }
+
+  readonly property var fanRange: Model.manualFanRange()
+  readonly property int fanSetpoint: Model.fanSetpoint(msi)
 
   function fmtPercent(p) {
     return (p === null || p === undefined || isNaN(Number(p)) || Number(p) < 0)
@@ -170,6 +181,9 @@ Panel {
       onMoveRequested: function (dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
         if (dy !== 0) root.moveCursor(dy)
+        else if (dx !== 0 && root.cursorRow === "fanlevel") {
+          msi.setManualFan(Model.clampManualFan(root.fanSetpoint + dx * 5))
+        }
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
       onCloseRequested: root.close()
@@ -369,13 +383,13 @@ Panel {
           }
 
           PanelSeparator {
-            visible: shiftModes.length > 0 && (fanModes.length > 0 || msi.hasCooler)
+            visible: shiftModes.length > 0 && (fanModes.length > 0 || msi.hasCooler || msi.hasManualFan)
             foreground: root.foreground
           }
 
           // --------------------------------------------------------- FAN
           Column {
-            visible: fanModes.length > 0 || msi.hasCooler
+            visible: fanModes.length > 0 || msi.hasCooler || msi.hasManualFan
             width: parent.width
             spacing: Style.space(10)
 
@@ -402,6 +416,14 @@ Panel {
                   onClicked: msi.setFanMode(modelData)
                 }
               }
+            }
+
+            FanSpeedRow {
+              visible: msi.hasManualFan
+              width: parent.width
+              value: root.fanSetpoint
+              manual: msi.manualFan >= 0
+              onCommitted: function (percent) { msi.setManualFan(percent) }
             }
 
             ToggleRow {
@@ -593,6 +615,124 @@ Panel {
         hasCursor: toggleRow.hasCursor
         foreground: root.foreground
         onToggled: toggleRow.toggled()
+      }
+    }
+  }
+
+
+  // Manual fan speed: one draggable track that pins the EC fan curve to a
+  // single speed. Mouse commit happens on release, keyboard on each step, so
+  // a drag is one helper call and a keypress is one.
+  component FanSpeedRow: CursorSurface {
+    id: fanRow
+    property int value: 50
+    property bool manual: false
+    property int preview: -1
+
+    signal committed(int percent)
+
+    readonly property int shown: preview >= 0 ? preview : value
+
+    hasCursor: root.rowHasCursor("fanlevel")
+    foreground: root.foreground
+    implicitHeight: fanContent.implicitHeight + Style.spacing.rowPaddingX
+
+    function at(px, span) {
+      var f = Math.max(0, Math.min(1, px / Math.max(1, span)))
+      var lo = root.fanRange.min
+      return Math.round(lo + f * (root.fanRange.max - lo))
+    }
+
+    // Hovering anywhere on the row focuses it, so j/k lands here naturally;
+    // only the track band below actually changes the speed.
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      onEntered: root.focusRow("fanlevel")
+    }
+
+    ColumnLayout {
+      id: fanContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      spacing: Style.space(4)
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(6)
+
+        Text {
+          textFormat: Text.PlainText
+          Layout.fillWidth: true
+          text: "Manual fan speed"
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          elide: Text.ElideRight
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          text: fanRow.manual || fanRow.preview >= 0 ? fanRow.shown + "%" : "EC curve"
+          color: fanRow.manual || fanRow.preview >= 0 ? root.accent : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          font.weight: Font.DemiBold
+        }
+      }
+
+      // 24 px hit band around a 5 px track: easy to grab, still compact.
+      Rectangle {
+        Layout.fillWidth: true
+        implicitHeight: Style.space(24)
+        color: "transparent"
+
+        Rectangle {
+          anchors.verticalCenter: parent.verticalCenter
+          width: parent.width
+          height: Style.space(5)
+          radius: height / 2
+          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
+
+          Rectangle {
+            height: parent.height
+            radius: height / 2
+            width: parent.width * Math.max(0, Math.min(100, fanRow.shown)) / 100
+            color: root.accent
+          }
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+          preventStealing: true
+          cursorShape: Qt.PointingHandCursor
+          onEntered: root.focusRow("fanlevel")
+          onPressed: fanRow.preview = fanRow.at(mouse.x, width)
+          onPositionChanged: if (pressed) fanRow.preview = fanRow.at(mouse.x, width)
+          onReleased: {
+            var next = fanRow.preview >= 0 ? fanRow.preview : fanRow.value
+            fanRow.preview = -1
+            fanRow.committed(next)
+          }
+          onCanceled: fanRow.preview = -1
+        }
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        Layout.fillWidth: true
+        text: fanRow.manual
+          ? "Fixed speed — Enter hands the fan back to the EC curve"
+          : "Drag, click or use the left/right keys to fix a speed"
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
       }
     }
   }

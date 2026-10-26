@@ -7,9 +7,10 @@ import "Model.js" as Model
 //
 // Reads are a plain sysfs snapshot (scripts/msi-read.sh). Writes are the same
 // sysfs writes the app performs (scripts/msi-set.sh): shift_mode, fan_mode,
-// cooler_boost and the battery charge limit. No raw EC writes and no root
-// helper are involved — the udev rule grants the msi-ec group write access to
-// exactly those attributes.
+// cooler_boost and the battery charge limit. A fixed fan speed is the one
+// exception: the EC fan curve is not exported by msi-ec, so the widget calls
+// the same setuid msi-fan-helper the app does, which can only write the seven
+// curve speeds at 0x72..0x78.
 Item {
   id: msi
   property var settings: ({})
@@ -33,6 +34,8 @@ Item {
   property int fanRpm: 0
   property bool hasFanRpm: false
   property int fanLevel: -1
+  property int manualFan: -1
+  property bool hasManualFan: false
   property int battery: -1
   property int batteryLimit: -1
   property int kbdLevel: -1
@@ -104,6 +107,8 @@ Item {
     fanRpm = Model.clampInt(snap.fanRpm, 0, 15000, 0)
     hasFanRpm = !!snap.hasFanRpm
     fanLevel = Model.clampInt(snap.fanLevel, -1, 100, -1)
+    manualFan = Model.clampInt(snap.manualFan, -1, 100, -1)
+    hasManualFan = !!snap.hasManualFan
     battery = Model.clampInt(snap.battery, -1, 100, -1)
     batteryLimit = Model.clampInt(snap.batteryLimit, -1, 100, -1)
     kbdLevel = Model.clampInt(snap.kbdLevel, -1, 255, -1)
@@ -151,6 +156,18 @@ Item {
 
   function setCoolerBoost(enabled) {
     _write("cooler", enabled ? "on" : "off")
+  }
+
+  // Pin the fan to one speed (a flat EC curve), or put the EC curve back.
+  function setManualFan(percent) {
+    var value = Model.clampManualFan(percent)
+    if (value < 0 || !hasManualFan) return
+    _write("fanlevel", value)
+  }
+
+  function restoreFanCurve() {
+    if (!hasManualFan) return
+    _write("fanrestore", "")
   }
 
   function setBatteryLimit(limit) {
